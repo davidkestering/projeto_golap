@@ -6,7 +6,7 @@ aplicação visual de cubos com drag-and-drop (estilo **Saiku**). Implantação 
 
 > Plano completo e roteiro por fases: `~/.claude/plans/quero-sua-ajuda-eu-bubbly-sonnet.md`.
 
-## Estado atual — Fases 0–4
+## Estado atual — Fases 0–5
 
 **Fase 0 (infra):**
 - `cmd/cubodw` — CLI (cobra): `serve-engine`, `healthcheck`, `version`.
@@ -78,8 +78,24 @@ curl -s -X POST localhost:8088/saiku/api/mdx/execute -H 'Content-Type: applicati
 # USA -> 266773 | 565238.13
 ```
 
-Ainda **não** suportados (erro claro): `Filter`/`Order`/`TopCount`, membros
-calculados (`WITH`), NON EMPTY explícito, snowflake. → próximas fases.
+**Fase 5 (funções de conjunto + membros calculados):**
+- `internal/service/mdxeval` refatorado para **resolver as posições de cada eixo
+  independentemente** (no contexto do slicer), suportando `Order`,
+  `TopCount`/`BottomCount` e `Filter` (ordenação/limite/filtro por medida).
+- `internal/service/mdxeval/calc.go` — **membros calculados** (`WITH MEMBER`):
+  avaliador numérico/booleano sobre medidas (ex.: `Profit AS [Store Sales] - [Store Cost]`,
+  `Filter(set, [Unit Sales] > 1000)`), computado em Go sobre as medidas-base.
+
+Exemplo:
+
+```sh
+curl -s -X POST localhost:8088/saiku/api/mdx/execute -H 'Content-Type: application/json' -d '{
+  "mdx":"WITH MEMBER [Measures].[Profit] AS [Measures].[Store Sales] - [Measures].[Store Cost] SELECT {[Measures].[Profit]} ON COLUMNS, TopCount([Store].[Store State].Members,2,[Measures].[Unit Sales]) ON ROWS FROM [Sales]"
+}'
+```
+
+Ainda **não** suportados (erro claro): NON EMPTY explícito, named sets, ranges
+(`:`), snowflake. → próximas fases (NON EMPTY/Arrow/Matrix, cache de agregação).
 
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.
@@ -139,7 +155,7 @@ internal/
   service/
     discover/         descoberta de metadados
     queryexec/        execução de query no Postgres
-    mdxeval/          avaliador MDX -> CellSet (reusa queryexec)
+    mdxeval/          avaliador MDX -> CellSet (Order/TopCount/Filter, WITH MEMBER)
 deploy/
   engine/Dockerfile
   docker-compose.yml
