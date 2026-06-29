@@ -14,7 +14,7 @@ Manual HTML detalhado de todos os módulos, API REST e cobertura MDX, em 3 idiom
 - [`DOCS/index.html`](DOCS/index.html) — seletor de idioma
 - 🇧🇷 [`DOCS/manual.pt-br.html`](DOCS/manual.pt-br.html) · 🇬🇧 [`DOCS/manual.en.html`](DOCS/manual.en.html) · 🇪🇸 [`DOCS/manual.es.html`](DOCS/manual.es.html)
 
-## Estado atual — Fases 0–8
+## Estado atual — Fases 0–8 (+ Fase 9 em progresso)
 
 **Fase 0 (infra):**
 - `cmd/cubodw` — CLI (cobra): `serve-engine`, `healthcheck`, `version`.
@@ -125,6 +125,18 @@ Ainda **não** suportados (erro claro): `Min`/`Max` sobre conjuntos, mostrar
 todos os membros em `CrossJoin` (multi-binding ainda via fato), named sets,
 ranges (`:`), snowflake. → próximas fases (Arrow/Matrix, cache de agregação,
 mais dialetos).
+
+**Fase 9.1 (AI Query API):** surface tipada para agentes/LLMs consultarem cubos
+**sem MDX** (`internal/web/ai.go`):
+
+```
+GET  /saiku/api/ai/cubes               # cubos + defaultMeasure + measureCount
+GET  /saiku/api/ai/schema/{cube}       # auto-descritivo: medidas, dims, níveis com
+                                       #   membros de amostra REAIS + exemplo de request
+POST /saiku/api/ai/query               # {cube, measures, rows, columns, filters} (sem MDX)
+```
+
+Validação com auto-correção: nome inválido devolve `{status, field, value, available:[…]}`.
 
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.
