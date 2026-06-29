@@ -1,0 +1,12 @@
+# Referência (clone do Mondrian) e zip do Saiku não entram no build.
+reference/
+saiku-4.5.2.zip
+*.zip
+
+# Artefatos e VCS
+.git/
+bin/
+dist/
+*.md
+deploy/
+testdata/

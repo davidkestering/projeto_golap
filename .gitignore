@@ -1,0 +1,22 @@
+# Binários e artefatos
+/bin/
+/out/
+/dist/
+# binário compilado na raiz (NÃO casar com o diretório cmd/cubodw/)
+/cubodw
+
+# Config local do Claude Code (não faz parte do projeto)
+.claude/settings.local.json
+
+# Referência de leitura (clone grande do Mondrian) — não versionar
+/reference/
+
+# Zip do Saiku (fonte de engenharia reversa, fica fora do VCS)
+saiku-4.5.2.zip
+saiku-4.5.2.zip:Zone.Identifier
+
+# Dados locais
+/testdata/foodmart/*.local
+
+# SO / editor
+.DS_Store

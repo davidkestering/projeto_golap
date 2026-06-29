@@ -1,0 +1,44 @@
+name: cubodw
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cubodw
+      POSTGRES_PASSWORD: cubodw
+      POSTGRES_DB: foodmart
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Scripts de seed do FoodMart (Tarefa #4). Rodam só na primeira subida do volume.
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cubodw -d foodmart"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  engine:
+    build:
+      context: ..
+      dockerfile: deploy/engine/Dockerfile
+    environment:
+      CUBODW_HTTP_ADDR: ":8080"
+      CUBODW_PG_DSN: "postgres://cubodw:cubodw@postgres:5432/foodmart?sslmode=disable"
+    ports:
+      # Host 8088 -> container 8080 (evita conflito com outros serviços na 8080 do host).
+      - "8088:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # Imagem distroless não tem shell/curl: usamos o próprio binário.
+      test: ["CMD", "/usr/local/bin/cubodw", "healthcheck", "--url", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  pgdata:
