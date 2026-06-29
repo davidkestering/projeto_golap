@@ -53,6 +53,19 @@ func (s *Service) EnumerateLevel(ctx context.Context, cube *metadata.Cube, ref q
 	return out, nil
 }
 
+// Drillthrough devolve as linhas de fato cruas por trás de um contexto (filtros),
+// com limite de linhas.
+func (s *Service) Drillthrough(ctx context.Context, cube *metadata.Cube, filters []query.Filter, maxrows int) (*query.Result, error) {
+	if s.pool == nil {
+		return nil, fmt.Errorf("sem conexão de banco")
+	}
+	st, err := enginesql.BuildDrillthrough(s.dialect, cube, filters, maxrows)
+	if err != nil {
+		return nil, err
+	}
+	return s.Run(ctx, cube, st)
+}
+
 // Run executa a SQL planejada e materializa o Result.
 func (s *Service) Run(ctx context.Context, cube *metadata.Cube, st *enginesql.Statement) (*query.Result, error) {
 	if s.pool == nil {

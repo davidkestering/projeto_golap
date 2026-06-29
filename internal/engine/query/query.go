@@ -12,6 +12,9 @@ type Query struct {
 	Rows     []LevelRef `json:"rows,omitempty"`
 	Columns  []LevelRef `json:"columns,omitempty"`
 	Filters  []Filter   `json:"filters,omitempty"`
+	// Totals acrescenta uma linha de total geral (todas as medidas sobre o
+	// conjunto filtrado, sem agrupar por níveis).
+	Totals bool `json:"totals,omitempty"`
 }
 
 // LevelRef referencia um nível de uma hierarquia/dimensão.

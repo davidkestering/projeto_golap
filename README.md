@@ -138,6 +138,11 @@ POST /saiku/api/ai/query               # {cube, measures, rows, columns, filters
 
 Validação com auto-correção: nome inválido devolve `{status, field, value, available:[…]}`.
 
+**Fase 9.2 (drill-through + totais):**
+- `POST /saiku/api/query/drillthrough` — `{cube, filters, maxrows}` → linhas de fato
+  cruas por trás de um contexto (`sql.BuildDrillthrough`).
+- `POST /saiku/api/query` com `"totals":true` → acrescenta uma linha de total geral.
+
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.
 
