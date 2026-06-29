@@ -267,6 +267,44 @@ func resolveAxis(ctx context.Context, cube *metadata.Cube, exp mdx.Exp, ordinal 
 // (bindings, posições), tratando as funções de conjunto recursivamente (o que
 // permite compô-las, ex.: Head(Order(...), 5)).
 func resolveMemberSet(ctx context.Context, cube *metadata.Cube, exp mdx.Exp, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry) ([]levelBinding, []position, error) {
+	// Conjunto de 1 elemento {x} é equivalente a x — desembrulha para que funções
+	// (tempo, conjunto) dentro das chaves sejam reconhecidas.
+	if fc, ok := exp.(*mdx.FunCall); ok && fc.Syntax == mdx.SyntaxBraces && len(fc.Args) == 1 {
+		return resolveMemberSet(ctx, cube, fc.Args[0], slicer, exec, reg)
+	}
+
+	// Inteligência de tempo: [m].PrevMember/.NextMember, .Lag(n)/.Lead(n), YTD(m).
+	switch e := exp.(type) {
+	case *mdx.Id:
+		if u := strings.ToUpper(lastSeg(e)); (u == "PREVMEMBER" || u == "NEXTMEMBER") && len(e.Segments) >= 2 {
+			shift := -1
+			if u == "NEXTMEMBER" {
+				shift = 1
+			}
+			return timeShift(ctx, cube, exec, &mdx.Id{Segments: e.Segments[:len(e.Segments)-1]}, shift)
+		}
+	case *mdx.FunCall:
+		if e.Syntax == mdx.SyntaxMethod && len(e.Args) >= 2 {
+			u := strings.ToUpper(e.Name)
+			if u == "LAG" || u == "LEAD" {
+				base, ok1 := e.Args[0].(*mdx.Id)
+				nlit, ok2 := e.Args[1].(*mdx.NumericLiteral)
+				if ok1 && ok2 {
+					n := int(nlit.Value)
+					if u == "LAG" {
+						n = -n
+					}
+					return timeShift(ctx, cube, exec, base, n)
+				}
+			}
+		}
+		if e.Syntax == mdx.SyntaxFunction && strings.EqualFold(e.Name, "YTD") && len(e.Args) >= 1 {
+			if base, ok := e.Args[0].(*mdx.Id); ok {
+				return ytd(ctx, cube, exec, base)
+			}
+		}
+	}
+
 	if fc, ok := exp.(*mdx.FunCall); ok && fc.Syntax == mdx.SyntaxFunction {
 		switch strings.ToUpper(fc.Name) {
 		case "ORDER":

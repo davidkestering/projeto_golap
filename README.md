@@ -143,6 +143,12 @@ Validação com auto-correção: nome inválido devolve `{status, field, value, 
   cruas por trás de um contexto (`sql.BuildDrillthrough`).
 - `POST /saiku/api/query` com `"totals":true` → acrescenta uma linha de total geral.
 
+**Fase 9.3 (inteligência de tempo):** navegação sobre membros ordenados de um nível
+(`internal/service/mdxeval/time.go`):
+- `[m].PrevMember` / `[m].NextMember`, `[m].Lag(n)` / `[m].Lead(n)` — membro deslocado.
+- `YTD([Time].[1997].[Q3])` — do início do ciclo até o membro (acumulado no ano).
+  Ex.: `Lead(1)` de Q3 → Q4; `YTD(Q3)` → Q1, Q2, Q3.
+
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.
 
