@@ -6,6 +6,14 @@ aplicação visual de cubos com drag-and-drop (estilo **Saiku**). Implantação 
 
 > Plano completo e roteiro por fases: `~/.claude/plans/quero-sua-ajuda-eu-bubbly-sonnet.md`.
 
+## 📖 Manual técnico
+
+Manual HTML detalhado de todos os módulos, API REST e cobertura MDX, em 3 idiomas
+(abra no navegador):
+
+- [`DOCS/index.html`](DOCS/index.html) — seletor de idioma
+- 🇧🇷 [`DOCS/manual.pt-br.html`](DOCS/manual.pt-br.html) · 🇬🇧 [`DOCS/manual.en.html`](DOCS/manual.en.html) · 🇪🇸 [`DOCS/manual.es.html`](DOCS/manual.es.html)
+
 ## Estado atual — Fases 0–8
 
 **Fase 0 (infra):**
