@@ -63,6 +63,23 @@ func TestEvalBool(t *testing.T) {
 	}
 }
 
+func TestEvalIIfAndCoalesce(t *testing.T) {
+	env := map[string]float64{"unit sales": 2000, "store sales": 500}
+	iif, _ := mdx.ParseExpression(`IIf([Measures].[Unit Sales] > 1000, 1, 0)`)
+	if v, ok := evalNumeric(iif, env, nil); !ok || v != 1 {
+		t.Errorf("IIf true = %v,%v quero 1", v, ok)
+	}
+	iif2, _ := mdx.ParseExpression(`IIf([Measures].[Unit Sales] > 5000, 1, 0)`)
+	if v, ok := evalNumeric(iif2, env, nil); !ok || v != 0 {
+		t.Errorf("IIf false = %v,%v quero 0", v, ok)
+	}
+	// CoalesceEmpty: a primeira medida (ausente => indefinida) cai para a 2ª.
+	coal, _ := mdx.ParseExpression(`CoalesceEmpty([Measures].[Ausente], [Measures].[Store Sales])`)
+	if v, ok := evalNumeric(coal, env, nil); !ok || v != 500 {
+		t.Errorf("CoalesceEmpty = %v,%v quero 500", v, ok)
+	}
+}
+
 func TestIsMeasuresExp(t *testing.T) {
 	m, _ := mdx.ParseExpression(`{[Measures].[Unit Sales], [Measures].[Store Sales]}`)
 	if !isMeasuresExp(m) {

@@ -158,6 +158,24 @@ func evalNumeric(exp mdx.Exp, env map[string]float64, reg calcRegistry) (float64
 		return 0, false
 	case *mdx.FunCall:
 		switch e.Syntax {
+		case mdx.SyntaxFunction:
+			switch strings.ToUpper(e.Name) {
+			case "IIF":
+				if len(e.Args) == 3 {
+					if evalBool(e.Args[0], env, reg) {
+						return evalNumeric(e.Args[1], env, reg)
+					}
+					return evalNumeric(e.Args[2], env, reg)
+				}
+			case "COALESCEEMPTY":
+				for _, a := range e.Args {
+					if v, ok := evalNumeric(a, env, reg); ok {
+						return v, true
+					}
+				}
+				return 0, false
+			}
+			return 0, false
 		case mdx.SyntaxParentheses:
 			if len(e.Args) == 1 {
 				return evalNumeric(e.Args[0], env, reg)

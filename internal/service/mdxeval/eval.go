@@ -137,40 +137,65 @@ func resolveAxis(ctx context.Context, cube *metadata.Cube, exp mdx.Exp, ordinal 
 		return resolvedAxis{ordinal: ordinal, isMeasures: true, slots: slots}, nil
 	}
 
+	bindings, positions, err := resolveMemberSet(ctx, cube, exp, slicer, exec, reg)
+	if err != nil {
+		return resolvedAxis{}, err
+	}
+	return resolvedAxis{ordinal: ordinal, bindings: bindings, positions: positions}, nil
+}
+
+// resolveMemberSet resolve uma expressão de conjunto de membros para
+// (bindings, posições), tratando as funções de conjunto recursivamente (o que
+// permite compô-las, ex.: Head(Order(...), 5)).
+func resolveMemberSet(ctx context.Context, cube *metadata.Cube, exp mdx.Exp, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry) ([]levelBinding, []position, error) {
 	if fc, ok := exp.(*mdx.FunCall); ok && fc.Syntax == mdx.SyntaxFunction {
 		switch strings.ToUpper(fc.Name) {
 		case "ORDER":
-			return resolveOrder(ctx, cube, fc, ordinal, slicer, exec, reg)
+			return setOrder(ctx, cube, fc, slicer, exec, reg)
 		case "TOPCOUNT":
-			return resolveTopBottom(ctx, cube, fc, ordinal, slicer, exec, reg, true)
+			return setTopBottom(ctx, cube, fc, slicer, exec, reg, true)
 		case "BOTTOMCOUNT":
-			return resolveTopBottom(ctx, cube, fc, ordinal, slicer, exec, reg, false)
+			return setTopBottom(ctx, cube, fc, slicer, exec, reg, false)
 		case "FILTER":
-			return resolveFilter(ctx, cube, fc, ordinal, slicer, exec, reg)
+			return setFilter(ctx, cube, fc, slicer, exec, reg)
+		case "UNION":
+			return setBinaryOp(ctx, cube, fc, slicer, exec, reg, "union")
+		case "EXCEPT":
+			return setBinaryOp(ctx, cube, fc, slicer, exec, reg, "except")
+		case "INTERSECT":
+			return setBinaryOp(ctx, cube, fc, slicer, exec, reg, "intersect")
+		case "HEAD":
+			return setHeadTail(ctx, cube, fc, slicer, exec, reg, true)
+		case "TAIL":
+			return setHeadTail(ctx, cube, fc, slicer, exec, reg, false)
+		case "DISTINCT":
+			return setUnary(ctx, cube, fc, slicer, exec, reg, "distinct")
+		case "HIERARCHIZE":
+			return setUnary(ctx, cube, fc, slicer, exec, reg, "hierarchize")
 		}
 	}
 
 	plan, err := analyzeAxis(cube, exp)
 	if err != nil {
-		return resolvedAxis{}, err
+		return nil, nil, err
 	}
 	if plan.isMeasures {
-		return resolvedAxis{ordinal: ordinal, isMeasures: true}, nil
+		return nil, nil, fmt.Errorf("esperava um conjunto de membros, não de medidas")
 	}
 	positions, err := enumerate(ctx, cube, plan.bindings, slicer, nil, exec)
 	if err != nil {
-		return resolvedAxis{}, err
+		return nil, nil, err
 	}
-	return resolvedAxis{ordinal: ordinal, bindings: plan.bindings, positions: positions}, nil
+	return plan.bindings, positions, nil
 }
 
-func resolveOrder(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall, ordinal int, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry) (resolvedAxis, error) {
+func setOrder(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry) ([]levelBinding, []position, error) {
 	if len(fc.Args) < 2 {
-		return resolvedAxis{}, fmt.Errorf("Order espera (conjunto, expressão [, ASC|DESC|BASC|BDESC])")
+		return nil, nil, fmt.Errorf("Order espera (conjunto, expressão [, ASC|DESC|BASC|BDESC])")
 	}
-	plan, err := innerBindings(cube, fc.Args[0])
+	bindings, err := innerBindings(cube, fc.Args[0])
 	if err != nil {
-		return resolvedAxis{}, err
+		return nil, nil, err
 	}
 	valueExp := fc.Args[1]
 	desc := false
@@ -179,38 +204,38 @@ func resolveOrder(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall, ord
 			desc = strings.Contains(strings.ToUpper(id.String()), "DESC")
 		}
 	}
-	positions, err := enumerateForExpr(ctx, cube, plan, valueExp, slicer, exec, reg)
+	positions, err := enumerateForExpr(ctx, cube, bindings, valueExp, slicer, exec, reg)
 	if err != nil {
-		return resolvedAxis{}, err
+		return nil, nil, err
 	}
 	sortByExpr(positions, valueExp, reg, desc)
-	return resolvedAxis{ordinal: ordinal, bindings: plan, positions: positions}, nil
+	return bindings, positions, nil
 }
 
-func resolveTopBottom(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall, ordinal int, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry, top bool) (resolvedAxis, error) {
+func setTopBottom(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry, top bool) ([]levelBinding, []position, error) {
 	name := "TopCount"
 	if !top {
 		name = "BottomCount"
 	}
 	if len(fc.Args) < 2 {
-		return resolvedAxis{}, fmt.Errorf("%s espera (conjunto, n [, expressão])", name)
+		return nil, nil, fmt.Errorf("%s espera (conjunto, n [, expressão])", name)
 	}
-	plan, err := innerBindings(cube, fc.Args[0])
+	bindings, err := innerBindings(cube, fc.Args[0])
 	if err != nil {
-		return resolvedAxis{}, err
+		return nil, nil, err
 	}
 	nlit, ok := fc.Args[1].(*mdx.NumericLiteral)
 	if !ok {
-		return resolvedAxis{}, fmt.Errorf("%s: 2º argumento deve ser um número", name)
+		return nil, nil, fmt.Errorf("%s: 2º argumento deve ser um número", name)
 	}
 	n := int(nlit.Value)
 	var valueExp mdx.Exp
 	if len(fc.Args) >= 3 {
 		valueExp = fc.Args[2]
 	}
-	positions, err := enumerateForExpr(ctx, cube, plan, valueExp, slicer, exec, reg)
+	positions, err := enumerateForExpr(ctx, cube, bindings, valueExp, slicer, exec, reg)
 	if err != nil {
-		return resolvedAxis{}, err
+		return nil, nil, err
 	}
 	if valueExp != nil {
 		sortByExpr(positions, valueExp, reg, top) // top => desc
@@ -218,21 +243,21 @@ func resolveTopBottom(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall,
 	if n >= 0 && n < len(positions) {
 		positions = positions[:n]
 	}
-	return resolvedAxis{ordinal: ordinal, bindings: plan, positions: positions}, nil
+	return bindings, positions, nil
 }
 
-func resolveFilter(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall, ordinal int, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry) (resolvedAxis, error) {
+func setFilter(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry) ([]levelBinding, []position, error) {
 	if len(fc.Args) != 2 {
-		return resolvedAxis{}, fmt.Errorf("Filter espera (conjunto, condição)")
+		return nil, nil, fmt.Errorf("Filter espera (conjunto, condição)")
 	}
-	plan, err := innerBindings(cube, fc.Args[0])
+	bindings, err := innerBindings(cube, fc.Args[0])
 	if err != nil {
-		return resolvedAxis{}, err
+		return nil, nil, err
 	}
 	cond := fc.Args[1]
-	positions, err := enumerateForExpr(ctx, cube, plan, cond, slicer, exec, reg)
+	positions, err := enumerateForExpr(ctx, cube, bindings, cond, slicer, exec, reg)
 	if err != nil {
-		return resolvedAxis{}, err
+		return nil, nil, err
 	}
 	kept := positions[:0]
 	for _, p := range positions {
@@ -240,7 +265,134 @@ func resolveFilter(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall, or
 			kept = append(kept, p)
 		}
 	}
-	return resolvedAxis{ordinal: ordinal, bindings: plan, positions: kept}, nil
+	return bindings, kept, nil
+}
+
+// setBinaryOp implementa Union/Except/Intersect entre dois conjuntos de mesmos níveis.
+func setBinaryOp(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry, op string) ([]levelBinding, []position, error) {
+	if len(fc.Args) != 2 {
+		return nil, nil, fmt.Errorf("%s espera 2 conjuntos", op)
+	}
+	ba, pa, err := resolveMemberSet(ctx, cube, fc.Args[0], slicer, exec, reg)
+	if err != nil {
+		return nil, nil, err
+	}
+	bb, pb, err := resolveMemberSet(ctx, cube, fc.Args[1], slicer, exec, reg)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !bindingsMatch(ba, bb) {
+		return nil, nil, fmt.Errorf("%s exige conjuntos com os mesmos níveis", op)
+	}
+	inB := map[string]bool{}
+	for _, p := range pb {
+		inB[posKeyOf(p)] = true
+	}
+	var out []position
+	seen := map[string]bool{}
+	add := func(p position) {
+		k := posKeyOf(p)
+		if seen[k] {
+			return
+		}
+		seen[k] = true
+		out = append(out, p)
+	}
+	switch op {
+	case "union":
+		for _, p := range pa {
+			add(p)
+		}
+		for _, p := range pb {
+			add(p)
+		}
+	case "except":
+		for _, p := range pa {
+			if !inB[posKeyOf(p)] {
+				add(p)
+			}
+		}
+	case "intersect":
+		for _, p := range pa {
+			if inB[posKeyOf(p)] {
+				add(p)
+			}
+		}
+	}
+	return ba, out, nil
+}
+
+func setHeadTail(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry, head bool) ([]levelBinding, []position, error) {
+	if len(fc.Args) < 1 {
+		return nil, nil, fmt.Errorf("Head/Tail espera (conjunto [, n])")
+	}
+	bindings, positions, err := resolveMemberSet(ctx, cube, fc.Args[0], slicer, exec, reg)
+	if err != nil {
+		return nil, nil, err
+	}
+	n := 1
+	if len(fc.Args) >= 2 {
+		if nlit, ok := fc.Args[1].(*mdx.NumericLiteral); ok {
+			n = int(nlit.Value)
+		}
+	}
+	if n < 0 {
+		n = 0
+	}
+	if n > len(positions) {
+		n = len(positions)
+	}
+	if head {
+		positions = positions[:n]
+	} else {
+		positions = positions[len(positions)-n:]
+	}
+	return bindings, positions, nil
+}
+
+func setUnary(ctx context.Context, cube *metadata.Cube, fc *mdx.FunCall, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry, op string) ([]levelBinding, []position, error) {
+	if len(fc.Args) < 1 {
+		return nil, nil, fmt.Errorf("%s espera (conjunto)", op)
+	}
+	bindings, positions, err := resolveMemberSet(ctx, cube, fc.Args[0], slicer, exec, reg)
+	if err != nil {
+		return nil, nil, err
+	}
+	switch op {
+	case "distinct":
+		seen := map[string]bool{}
+		out := positions[:0]
+		for _, p := range positions {
+			k := posKeyOf(p)
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			out = append(out, p)
+		}
+		positions = out
+	case "hierarchize":
+		sort.SliceStable(positions, func(i, j int) bool {
+			return posKeyOf(positions[i]) < posKeyOf(positions[j])
+		})
+	}
+	return bindings, positions, nil
+}
+
+func bindingsMatch(a, b []levelBinding) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].ref.Dimension != b[i].ref.Dimension || a[i].ref.Level != b[i].ref.Level {
+			return false
+		}
+	}
+	return true
+}
+
+func posKeyOf(p position) string {
+	return strings.Join(p.values, "\x1f")
 }
 
 // innerBindings extrai os bindings do conjunto interno (deve ser um conjunto de

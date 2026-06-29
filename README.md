@@ -6,7 +6,7 @@ aplicação visual de cubos com drag-and-drop (estilo **Saiku**). Implantação 
 
 > Plano completo e roteiro por fases: `~/.claude/plans/quero-sua-ajuda-eu-bubbly-sonnet.md`.
 
-## Estado atual — Fases 0–5
+## Estado atual — Fases 0–6
 
 **Fase 0 (infra):**
 - `cmd/cubodw` — CLI (cobra): `serve-engine`, `healthcheck`, `version`.
@@ -94,8 +94,16 @@ curl -s -X POST localhost:8088/saiku/api/mdx/execute -H 'Content-Type: applicati
 }'
 ```
 
-Ainda **não** suportados (erro claro): NON EMPTY explícito, named sets, ranges
-(`:`), snowflake. → próximas fases (NON EMPTY/Arrow/Matrix, cache de agregação).
+**Fase 6 (mais funções MDX):**
+- Operações de conjunto, **componíveis** (`resolveMemberSet` recursivo): `Union`,
+  `Except`, `Intersect`, `Head`, `Tail`, `Distinct`, `Hierarchize`
+  (ex.: `Head(Order([Store].[Store State].Members,[Unit Sales],BDESC), 2)`).
+- Funções escalares em membros calculados: `IIf(cond, x, y)`, `CoalesceEmpty(...)`.
+
+Ainda **não** suportados (erro claro): NON EMPTY explícito, agregação sobre
+conjuntos em calc (`Sum`/`Avg` de um set), named sets, ranges (`:`), snowflake,
+enumeração de membros sem fatos (mostrar membros vazios). → próximas fases
+(NON EMPTY/Arrow/Matrix, cache de agregação).
 
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.
@@ -155,7 +163,7 @@ internal/
   service/
     discover/         descoberta de metadados
     queryexec/        execução de query no Postgres
-    mdxeval/          avaliador MDX -> CellSet (Order/TopCount/Filter, WITH MEMBER)
+    mdxeval/          avaliador MDX -> CellSet (Order/TopCount/Filter, set ops, WITH MEMBER)
 deploy/
   engine/Dockerfile
   docker-compose.yml
