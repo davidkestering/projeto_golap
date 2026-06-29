@@ -32,6 +32,27 @@ func (s *Service) Plan(cube *metadata.Cube, q query.Query) (*enginesql.Statement
 // HasDB indica se há conexão de banco configurada.
 func (s *Service) HasDB() bool { return s.pool != nil }
 
+// EnumerateLevel devolve todos os membros de um nível a partir da tabela de
+// dimensão (não do fato), aplicando os filtros de ancestrais/restrição.
+func (s *Service) EnumerateLevel(ctx context.Context, cube *metadata.Cube, ref query.LevelRef, filters []query.Filter) ([]string, error) {
+	if s.pool == nil {
+		return nil, fmt.Errorf("sem conexão de banco")
+	}
+	st, err := enginesql.BuildLevelMembers(s.dialect, cube, ref, filters)
+	if err != nil {
+		return nil, err
+	}
+	res, err := s.Run(ctx, cube, st)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(res.Rows))
+	for _, row := range res.Rows {
+		out = append(out, fmt.Sprint(row[0].Value))
+	}
+	return out, nil
+}
+
 // Run executa a SQL planejada e materializa o Result.
 func (s *Service) Run(ctx context.Context, cube *metadata.Cube, st *enginesql.Statement) (*query.Result, error) {
 	if s.pool == nil {

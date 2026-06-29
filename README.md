@@ -6,7 +6,7 @@ aplicação visual de cubos com drag-and-drop (estilo **Saiku**). Implantação 
 
 > Plano completo e roteiro por fases: `~/.claude/plans/quero-sua-ajuda-eu-bubbly-sonnet.md`.
 
-## Estado atual — Fases 0–7
+## Estado atual — Fases 0–8
 
 **Fase 0 (infra):**
 - `cmd/cubodw` — CLI (cobra): `serve-engine`, `healthcheck`, `version`.
@@ -107,10 +107,16 @@ curl -s -X POST localhost:8088/saiku/api/mdx/execute -H 'Content-Type: applicati
   pré-computado no **contexto correto** (agrupado pelas demais dimensões do grid).
 - **`NON EMPTY`** honrado: poda posições cujas células são todas vazias.
 
-Ainda **não** suportados (erro claro): `Min`/`Max` sobre conjuntos, named sets,
-ranges (`:`), snowflake, e **mostrar membros sem fatos** por padrão (a enumeração
-é via fato/INNER JOIN, então o motor já se comporta como NON EMPTY). → próximas
-fases (enumeração via tabela de dimensão, Arrow/Matrix, cache de agregação).
+**Fase 8 (mostrar todos os membros vs NON EMPTY):**
+- Enumeração de membros via **tabela de dimensão** (`sql.BuildLevelMembers`:
+  `SELECT DISTINCT` com filtros de ancestrais/restrição), não pelo fato. Assim
+  `[Dim].[Nível].Members` mostra **todos** os membros (inclusive sem fatos →
+  células vazias) e `NON EMPTY` poda os vazios.
+
+Ainda **não** suportados (erro claro): `Min`/`Max` sobre conjuntos, mostrar
+todos os membros em `CrossJoin` (multi-binding ainda via fato), named sets,
+ranges (`:`), snowflake. → próximas fases (Arrow/Matrix, cache de agregação,
+mais dialetos).
 
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.

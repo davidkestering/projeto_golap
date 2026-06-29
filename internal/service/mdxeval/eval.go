@@ -301,6 +301,22 @@ func resolveMemberSet(ctx context.Context, cube *metadata.Cube, exp mdx.Exp, sli
 	if plan.isMeasures {
 		return nil, nil, fmt.Errorf("esperava um conjunto de membros, não de medidas")
 	}
+
+	// Caso comum (1 binding): enumera TODOS os membros via tabela de dimensão
+	// (semântica "mostrar todos"; NON EMPTY poda os vazios depois). CrossJoin
+	// (múltiplos bindings) permanece via fato por ora.
+	if len(plan.bindings) == 1 {
+		members, err := exec.EnumerateLevel(ctx, cube, plan.bindings[0].ref, plan.bindings[0].filters)
+		if err != nil {
+			return nil, nil, err
+		}
+		positions := make([]position, len(members))
+		for i, m := range members {
+			positions[i] = position{values: []string{m}}
+		}
+		return plan.bindings, positions, nil
+	}
+
 	positions, err := enumerate(ctx, cube, plan.bindings, slicer, nil, exec)
 	if err != nil {
 		return nil, nil, err
