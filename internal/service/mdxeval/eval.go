@@ -120,7 +120,126 @@ func Evaluate(ctx context.Context, cube *metadata.Cube, q *mdx.Query, exec *quer
 		return nil, err
 	}
 
-	return pivot(q, axes, ranges, slots, baseMeasures, measureAxis, res, reg), nil
+	aggLookups, err := buildAggLookups(ctx, cube, slots, qry.Rows, slicerFilters, exec, reg)
+	if err != nil {
+		return nil, err
+	}
+
+	return pivot(q, axes, ranges, slots, baseMeasures, measureAxis, res, reg, aggLookups), nil
+}
+
+// aggLookup guarda, para um nó de agregação sobre conjunto, os valores
+// pré-computados indexados pela tupla das dimensões do grid fora do conjunto.
+type aggLookup struct {
+	key       string // = nó.String() (chave no env das células)
+	otherCols []int  // colunas de nível do grid usadas como chave
+	values    map[string]float64
+}
+
+// buildAggLookups pré-computa os nós Sum/Avg/Count/Aggregate dos calc members.
+func buildAggLookups(ctx context.Context, cube *metadata.Cube, slots []measureSlot, gridRows []query.LevelRef, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry) ([]aggLookup, error) {
+	var nodes []*mdx.FunCall
+	seen := map[string]bool{}
+	for _, s := range slots {
+		if s.isCalc {
+			collectSetAggNodes(s.exp, &nodes, seen)
+		}
+	}
+	var out []aggLookup
+	for _, node := range nodes {
+		lu, err := computeAgg(ctx, cube, node, gridRows, slicer, exec, reg)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, lu)
+	}
+	return out, nil
+}
+
+func computeAgg(ctx context.Context, cube *metadata.Cube, node *mdx.FunCall, gridRows []query.LevelRef, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry) (aggLookup, error) {
+	name := strings.ToUpper(node.Name)
+	if name == "MIN" || name == "MAX" {
+		return aggLookup{}, fmt.Errorf("%s sobre conjunto ainda não suportado", name)
+	}
+	setBindings, err := innerBindings(cube, node.Args[0])
+	if err != nil {
+		return aggLookup{}, fmt.Errorf("%s: %w", name, err)
+	}
+	setDims := map[string]bool{}
+	for _, b := range setBindings {
+		setDims[b.ref.Dimension] = true
+	}
+	// Dimensões do grid que NÃO pertencem ao conjunto (contexto do subtotal).
+	var otherRefs []query.LevelRef
+	var otherCols []int
+	for i, r := range gridRows {
+		if !setDims[r.Dimension] {
+			otherRefs = append(otherRefs, r)
+			otherCols = append(otherCols, i)
+		}
+	}
+
+	memberPos, err := enumerate(ctx, cube, setBindings, slicer, nil, exec)
+	if err != nil {
+		return aggLookup{}, err
+	}
+	memberCount := float64(len(memberPos))
+
+	lu := aggLookup{key: node.String(), otherCols: otherCols, values: map[string]float64{}}
+	if name == "COUNT" {
+		lu.otherCols = nil
+		lu.values[""] = memberCount
+		return lu, nil
+	}
+	if len(node.Args) < 2 {
+		return aggLookup{}, fmt.Errorf("%s espera (conjunto, expressão)", name)
+	}
+	valueExp := node.Args[1]
+	into := map[string]*metadata.Measure{}
+	var valBase []*metadata.Measure
+	collectBaseMeasures(valueExp, cube, reg, into, &valBase)
+
+	qry := query.Query{Cube: cube.Name}
+	qry.Rows = append(qry.Rows, otherRefs...)
+	for _, b := range setBindings {
+		qry.Filters = append(qry.Filters, b.filters...)
+	}
+	qry.Filters = append(qry.Filters, slicer...)
+	for _, m := range valBase {
+		qry.Measures = append(qry.Measures, m.Name)
+	}
+	st, err := exec.Plan(cube, qry)
+	if err != nil {
+		return aggLookup{}, err
+	}
+	res, err := exec.Run(ctx, cube, st)
+	if err != nil {
+		return aggLookup{}, err
+	}
+	oc := len(otherRefs)
+	for _, row := range res.Rows {
+		parts := make([]string, oc)
+		for i := 0; i < oc; i++ {
+			parts[i] = fmt.Sprint(row[i].Value)
+		}
+		env := make(map[string]float64, len(valBase))
+		for k, m := range valBase {
+			f, _ := toFloat(row[oc+k].Value)
+			env[strings.ToLower(m.Name)] = f
+		}
+		v, ok := evalNumeric(valueExp, env, reg)
+		if !ok {
+			continue
+		}
+		if name == "AVG" {
+			if memberCount == 0 {
+				continue
+			}
+			v /= memberCount
+		}
+		lu.values[strings.Join(parts, "\x1f")] = v
+	}
+	return lu, nil
 }
 
 // resolveAxis resolve uma expressão de eixo num resolvedAxis.
@@ -509,7 +628,7 @@ func distinctAt(positions []position, bindingIdx int) []string {
 }
 
 // pivot monta o CellSet a partir das posições explícitas dos eixos e dos records.
-func pivot(q *mdx.Query, axes []resolvedAxis, ranges [][2]int, slots []measureSlot, baseMeasures []*metadata.Measure, measureAxis int, res *query.Result, reg calcRegistry) *CellSet {
+func pivot(q *mdx.Query, axes []resolvedAxis, ranges [][2]int, slots []measureSlot, baseMeasures []*metadata.Measure, measureAxis int, res *query.Result, reg calcRegistry, aggLookups []aggLookup) *CellSet {
 	levelColCount := 0
 	for _, r := range ranges {
 		if r[1] > levelColCount {
@@ -566,10 +685,24 @@ func pivot(q *mdx.Query, axes []resolvedAxis, ranges [][2]int, slots []measureSl
 			continue
 		}
 
-		env := make(map[string]float64, len(baseMeasures))
+		env := make(map[string]float64, len(baseMeasures)+len(aggLookups))
 		for k, m := range baseMeasures {
 			f, _ := toFloat(row[levelColCount+k].Value)
 			env[strings.ToLower(m.Name)] = f
+		}
+		// Injeta os subtotais pré-computados (Sum/Avg/Count sobre conjuntos).
+		for _, lu := range aggLookups {
+			key := ""
+			if len(lu.otherCols) > 0 {
+				parts := make([]string, len(lu.otherCols))
+				for i, c := range lu.otherCols {
+					parts[i] = fmt.Sprint(row[c].Value)
+				}
+				key = strings.Join(parts, "\x1f")
+			}
+			if v, ok := lu.values[key]; ok {
+				env[lu.key] = v
+			}
 		}
 
 		emit := func(coords []int, s measureSlot) {
@@ -592,10 +725,67 @@ func pivot(q *mdx.Query, axes []resolvedAxis, ranges [][2]int, slots []measureSl
 		}
 	}
 
+	pruneNonEmpty(cs, q)
+
 	if len(cs.Axes) == 2 {
 		cs.Grid = buildGrid(cs)
 	}
 	return cs
+}
+
+// pruneNonEmpty remove, dos eixos marcados NON EMPTY, as posições cujas células
+// são todas vazias (Value nil), reindexando as células.
+func pruneNonEmpty(cs *CellSet, q *mdx.Query) {
+	nonEmpty := map[int]bool{}
+	for i, ax := range q.Axes {
+		if ax.NonEmpty && i < len(cs.Axes) {
+			nonEmpty[i] = true
+		}
+	}
+	if len(nonEmpty) == 0 {
+		return
+	}
+	alive := map[int]map[int]bool{}
+	for a := range nonEmpty {
+		alive[a] = map[int]bool{}
+	}
+	for _, c := range cs.Cells {
+		if c.Value == nil {
+			continue
+		}
+		for a := range nonEmpty {
+			alive[a][c.Coords[a]] = true
+		}
+	}
+	remap := map[int]map[int]int{}
+	for a := range nonEmpty {
+		rm := map[int]int{}
+		newPos := make([]Position, 0, len(cs.Axes[a].Positions))
+		for pi, p := range cs.Axes[a].Positions {
+			if alive[a][pi] {
+				rm[pi] = len(newPos)
+				newPos = append(newPos, p)
+			}
+		}
+		remap[a] = rm
+		cs.Axes[a].Positions = newPos
+	}
+	kept := cs.Cells[:0]
+	for _, c := range cs.Cells {
+		drop := false
+		for a := range nonEmpty {
+			ni, ok := remap[a][c.Coords[a]]
+			if !ok {
+				drop = true
+				break
+			}
+			c.Coords[a] = ni
+		}
+		if !drop {
+			kept = append(kept, c)
+		}
+	}
+	cs.Cells = kept
 }
 
 func slotValue(s measureSlot, env map[string]float64, reg calcRegistry) (float64, bool) {

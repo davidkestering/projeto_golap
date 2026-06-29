@@ -174,6 +174,13 @@ func evalNumeric(exp mdx.Exp, env map[string]float64, reg calcRegistry) (float64
 					}
 				}
 				return 0, false
+			case "SUM", "AVG", "AGGREGATE", "COUNT", "MIN", "MAX":
+				// Agregações sobre conjuntos: valor pré-computado e injetado no
+				// env sob a chave = forma textual do nó (ver buildAggLookups).
+				if v, ok := env[e.String()]; ok {
+					return v, true
+				}
+				return 0, false
 			}
 			return 0, false
 		case mdx.SyntaxParentheses:
@@ -261,6 +268,34 @@ func evalBool(exp mdx.Exp, env map[string]float64, reg calcRegistry) bool {
 		}
 	}
 	return false
+}
+
+// isSetAggName indica se o nome é uma função de agregação sobre conjunto.
+func isSetAggName(name string) bool {
+	switch strings.ToUpper(name) {
+	case "SUM", "AVG", "AGGREGATE", "COUNT", "MIN", "MAX":
+		return true
+	}
+	return false
+}
+
+// collectSetAggNodes acumula nós de agregação sobre conjunto (Sum/Avg/...) numa
+// expressão, deduplicados pela forma textual.
+func collectSetAggNodes(exp mdx.Exp, into *[]*mdx.FunCall, seen map[string]bool) {
+	fc, ok := exp.(*mdx.FunCall)
+	if !ok {
+		return
+	}
+	if fc.Syntax == mdx.SyntaxFunction && isSetAggName(fc.Name) && len(fc.Args) >= 1 {
+		k := fc.String()
+		if !seen[k] {
+			seen[k] = true
+			*into = append(*into, fc)
+		}
+	}
+	for _, a := range fc.Args {
+		collectSetAggNodes(a, into, seen)
+	}
 }
 
 // formatNumber formata um valor de célula (sem casas se inteiro, senão 2 casas).

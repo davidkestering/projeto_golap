@@ -6,7 +6,7 @@ aplicação visual de cubos com drag-and-drop (estilo **Saiku**). Implantação 
 
 > Plano completo e roteiro por fases: `~/.claude/plans/quero-sua-ajuda-eu-bubbly-sonnet.md`.
 
-## Estado atual — Fases 0–6
+## Estado atual — Fases 0–7
 
 **Fase 0 (infra):**
 - `cmd/cubodw` — CLI (cobra): `serve-engine`, `healthcheck`, `version`.
@@ -100,10 +100,17 @@ curl -s -X POST localhost:8088/saiku/api/mdx/execute -H 'Content-Type: applicati
   (ex.: `Head(Order([Store].[Store State].Members,[Unit Sales],BDESC), 2)`).
 - Funções escalares em membros calculados: `IIf(cond, x, y)`, `CoalesceEmpty(...)`.
 
-Ainda **não** suportados (erro claro): NON EMPTY explícito, agregação sobre
-conjuntos em calc (`Sum`/`Avg` de um set), named sets, ranges (`:`), snowflake,
-enumeração de membros sem fatos (mostrar membros vazios). → próximas fases
-(NON EMPTY/Arrow/Matrix, cache de agregação).
+**Fase 7 (agregação sobre conjuntos + NON EMPTY):**
+- **`Sum`/`Avg`/`Count`/`Aggregate` sobre conjuntos** em membros calculados —
+  habilita **% do total / participação** (ex.: `[Pct] AS [Unit Sales] /
+  Sum([Store].[Store State].Members, [Unit Sales]) * 100`). O subtotal é
+  pré-computado no **contexto correto** (agrupado pelas demais dimensões do grid).
+- **`NON EMPTY`** honrado: poda posições cujas células são todas vazias.
+
+Ainda **não** suportados (erro claro): `Min`/`Max` sobre conjuntos, named sets,
+ranges (`:`), snowflake, e **mostrar membros sem fatos** por padrão (a enumeração
+é via fato/INNER JOIN, então o motor já se comporta como NON EMPTY). → próximas
+fases (enumeração via tabela de dimensão, Arrow/Matrix, cache de agregação).
 
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.
