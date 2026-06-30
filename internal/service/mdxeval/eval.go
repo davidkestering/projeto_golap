@@ -158,9 +158,6 @@ func buildAggLookups(ctx context.Context, cube *metadata.Cube, slots []measureSl
 
 func computeAgg(ctx context.Context, cube *metadata.Cube, node *mdx.FunCall, gridRows []query.LevelRef, slicer []query.Filter, exec *queryexec.Service, reg calcRegistry) (aggLookup, error) {
 	name := strings.ToUpper(node.Name)
-	if name == "MIN" || name == "MAX" {
-		return aggLookup{}, fmt.Errorf("%s sobre conjunto ainda não suportado", name)
-	}
 	setBindings, err := innerBindings(cube, node.Args[0])
 	if err != nil {
 		return aggLookup{}, fmt.Errorf("%s: %w", name, err)
@@ -198,6 +195,12 @@ func computeAgg(ctx context.Context, cube *metadata.Cube, node *mdx.FunCall, gri
 	into := map[string]*metadata.Measure{}
 	var valBase []*metadata.Measure
 	collectBaseMeasures(valueExp, cube, reg, into, &valBase)
+
+	// Min/Max sobre conjunto: precisa do valor POR MEMBRO (agrupa também pelos
+	// níveis do conjunto) e então tira o min/max em Go por contexto.
+	if name == "MIN" || name == "MAX" {
+		return computeMinMax(ctx, cube, node, name, setBindings, otherRefs, otherCols, valueExp, valBase, slicer, exec, reg)
+	}
 
 	qry := query.Query{Cube: cube.Name}
 	qry.Rows = append(qry.Rows, otherRefs...)
@@ -238,6 +241,59 @@ func computeAgg(ctx context.Context, cube *metadata.Cube, node *mdx.FunCall, gri
 			v /= memberCount
 		}
 		lu.values[strings.Join(parts, "\x1f")] = v
+	}
+	return lu, nil
+}
+
+// computeMinMax calcula Min/Max de uma expressão sobre os membros de um conjunto,
+// por contexto (demais dimensões do grid). Agrupa por outras-dims + níveis do
+// conjunto para obter o valor por membro, e reduz com min/max em Go.
+func computeMinMax(ctx context.Context, cube *metadata.Cube, node *mdx.FunCall, name string,
+	setBindings []levelBinding, otherRefs []query.LevelRef, otherCols []int,
+	valueExp mdx.Exp, valBase []*metadata.Measure, slicer []query.Filter,
+	exec *queryexec.Service, reg calcRegistry) (aggLookup, error) {
+
+	qry := query.Query{Cube: cube.Name}
+	qry.Rows = append(qry.Rows, otherRefs...)
+	for _, b := range setBindings {
+		qry.Rows = append(qry.Rows, b.ref)
+		qry.Filters = append(qry.Filters, b.filters...)
+	}
+	qry.Filters = append(qry.Filters, slicer...)
+	for _, m := range valBase {
+		qry.Measures = append(qry.Measures, m.Name)
+	}
+	st, err := exec.Plan(cube, qry)
+	if err != nil {
+		return aggLookup{}, err
+	}
+	res, err := exec.Run(ctx, cube, st)
+	if err != nil {
+		return aggLookup{}, err
+	}
+
+	nOther := len(otherRefs)
+	measStart := nOther + len(setBindings)
+	lu := aggLookup{key: node.String(), otherCols: otherCols, values: map[string]float64{}}
+	for _, row := range res.Rows {
+		parts := make([]string, nOther)
+		for i := 0; i < nOther; i++ {
+			parts[i] = fmt.Sprint(row[i].Value)
+		}
+		env := make(map[string]float64, len(valBase))
+		for k, m := range valBase {
+			f, _ := toFloat(row[measStart+k].Value)
+			env[strings.ToLower(m.Name)] = f
+		}
+		v, ok := evalNumeric(valueExp, env, reg)
+		if !ok {
+			continue
+		}
+		key := strings.Join(parts, "\x1f")
+		cur, exists := lu.values[key]
+		if !exists || (name == "MIN" && v < cur) || (name == "MAX" && v > cur) {
+			lu.values[key] = v
+		}
 	}
 	return lu, nil
 }

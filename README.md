@@ -123,10 +123,12 @@ curl -s -X POST localhost:8088/saiku/api/mdx/execute -H 'Content-Type: applicati
   `[Dim].[Nível].Members` mostra **todos** os membros (inclusive sem fatos →
   células vazias) e `NON EMPTY` poda os vazios.
 
-Ainda **não** suportados (erro claro): `Min`/`Max` sobre conjuntos, mostrar
-todos os membros em `CrossJoin` (multi-binding ainda via fato), named sets,
-ranges (`:`), snowflake. → próximas fases (Arrow/Matrix, cache de agregação,
-mais dialetos).
+Agregações sobre conjuntos em calc: `Sum`/`Avg`/`Count`/`Aggregate` e também
+**`Min`/`Max`** (estes via agregação por membro + redução em Go).
+
+Ainda **não** suportados (erro claro): mostrar todos os membros em `CrossJoin`
+(multi-binding ainda via fato), snowflake. Em desenvolvimento: named sets,
+ranges (`:`), múltiplas hierarquias, parent-child, mais dialetos SQL.
 
 **Fase 9.1 (AI Query API):** surface tipada para agentes/LLMs consultarem cubos
 **sem MDX** (`internal/web/ai.go`):
