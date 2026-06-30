@@ -4,6 +4,8 @@ Motor OLAP (estilo **Mondrian**) escrito em **Go**, mais — em fase posterior �
 aplicação visual de cubos com drag-and-drop (estilo **Saiku**). Implantação em
 **microserviços Docker**.
 
+Autor: **David Kestering** · Licença: Apache-2.0
+
 > Plano completo e roteiro por fases: `~/.claude/plans/quero-sua-ajuda-eu-bubbly-sonnet.md`.
 
 ## 📖 Manual técnico
