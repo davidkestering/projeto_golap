@@ -209,7 +209,27 @@ func findDimension(cube *metadata.Cube, name string) (*metadata.Dimension, error
 	return nil, fmt.Errorf("dimensão %q não existe no cubo %q", name, cube.Name)
 }
 
-// resolveMemberId mapeia [Dim].[seg...].[membro] para nível/valor + ancestrais.
+// defaultHierarchy devolve a hierarquia default (sem nome, ou com o nome da dimensão).
+func defaultHierarchy(dim *metadata.Dimension) *metadata.Hierarchy {
+	for _, h := range dim.Hierarchies {
+		if h.Name == "" || strings.EqualFold(h.Name, dim.Name) {
+			return h
+		}
+	}
+	return dim.Hierarchies[0]
+}
+
+// findNamedHierarchy procura uma hierarquia NOMEADA (ex.: "Weekly") pelo nome.
+func findNamedHierarchy(dim *metadata.Dimension, name string) *metadata.Hierarchy {
+	for _, h := range dim.Hierarchies {
+		if h.Name != "" && strings.EqualFold(h.Name, name) {
+			return h
+		}
+	}
+	return nil
+}
+
+// resolveMemberId mapeia [Dim].([Hier]).[seg...].[membro] para nível/valor + ancestrais.
 func resolveMemberId(cube *metadata.Cube, id *mdx.Id) (*memberRef, error) {
 	if len(id.Segments) < 2 {
 		return nil, fmt.Errorf("membro %q incompleto", id.String())
@@ -221,10 +241,17 @@ func resolveMemberId(cube *metadata.Cube, id *mdx.Id) (*memberRef, error) {
 	if len(dim.Hierarchies) == 0 {
 		return nil, fmt.Errorf("dimensão %q sem hierarquias", dim.Name)
 	}
-	hier := dim.Hierarchies[0]
+	hier := defaultHierarchy(dim)
+	rest := id.Segments[1:]
+	// Desambiguação de hierarquia nomeada: [Dim].[Hier].[membro…].
+	if len(rest) > 1 {
+		if h := findNamedHierarchy(dim, rest[0].Name); h != nil {
+			hier = h
+			rest = rest[1:]
+		}
+	}
 	levels := hier.Levels
 
-	rest := id.Segments[1:]
 	// Pula o membro "All", se explícito.
 	if hier.HasAll && len(rest) > 1 && isAllSegment(rest[0].Name, hier, dim) {
 		rest = rest[1:]
@@ -272,13 +299,14 @@ func memberBinding(level *memberRef, members []*memberRef) levelBinding {
 		}
 	}
 
-	b := levelBinding{ref: query.LevelRef{Dimension: dim.Name, Level: ownLevel.Name}}
+	hName := hier.EffectiveName(dim)
+	b := levelBinding{ref: query.LevelRef{Dimension: dim.Name, Hierarchy: hName, Level: ownLevel.Name}}
 	b.filters = append(b.filters, query.Filter{
-		Dimension: dim.Name, Level: ownLevel.Name, Members: ownValues,
+		Dimension: dim.Name, Hierarchy: hName, Level: ownLevel.Name, Members: ownValues,
 	})
 	for li, set := range ancestors {
 		b.filters = append(b.filters, query.Filter{
-			Dimension: dim.Name, Level: hier.Levels[li].Name, Members: keys(set),
+			Dimension: dim.Name, Hierarchy: hName, Level: hier.Levels[li].Name, Members: keys(set),
 		})
 	}
 	return b
@@ -293,11 +321,19 @@ func levelMembersBinding(cube *metadata.Cube, id *mdx.Id) (levelBinding, error) 
 	if err != nil {
 		return levelBinding{}, err
 	}
-	levelName := id.Segments[len(id.Segments)-2].Name
-	hier := dim.Hierarchies[0]
+	// Segmentos entre a dimensão e ".Members": opcionalmente [Hier] + [Nível].
+	inner := id.Segments[1 : len(id.Segments)-1]
+	hier := defaultHierarchy(dim)
+	if len(inner) >= 2 {
+		if h := findNamedHierarchy(dim, inner[0].Name); h != nil {
+			hier = h
+			inner = inner[1:]
+		}
+	}
+	levelName := inner[len(inner)-1].Name
 	for _, l := range hier.Levels {
 		if strings.EqualFold(l.Name, levelName) {
-			return levelBinding{ref: query.LevelRef{Dimension: dim.Name, Level: l.Name}}, nil
+			return levelBinding{ref: query.LevelRef{Dimension: dim.Name, Hierarchy: hier.EffectiveName(dim), Level: l.Name}}, nil
 		}
 	}
 	return levelBinding{}, fmt.Errorf("nível %q não encontrado em [%s].Members", levelName, dim.Name)
@@ -315,10 +351,11 @@ func childrenBinding(cube *metadata.Cube, id *mdx.Id) (levelBinding, error) {
 		return levelBinding{}, fmt.Errorf("membro %q não tem nível-filho", parentID.String())
 	}
 	childLevel := ref.hier.Levels[childIdx]
-	b := levelBinding{ref: query.LevelRef{Dimension: ref.dim.Name, Level: childLevel.Name}}
+	hName := ref.hier.EffectiveName(ref.dim)
+	b := levelBinding{ref: query.LevelRef{Dimension: ref.dim.Name, Hierarchy: hName, Level: childLevel.Name}}
 	for li, v := range ref.values {
 		b.filters = append(b.filters, query.Filter{
-			Dimension: ref.dim.Name, Level: ref.hier.Levels[li].Name, Members: []string{v},
+			Dimension: ref.dim.Name, Hierarchy: hName, Level: ref.hier.Levels[li].Name, Members: []string{v},
 		})
 	}
 	return b, nil
@@ -351,9 +388,10 @@ func analyzeSlicer(cube *metadata.Cube, exp mdx.Exp) ([]query.Filter, *metadata.
 		if err != nil {
 			return nil, nil, err
 		}
+		hName := ref.hier.EffectiveName(ref.dim)
 		for li, v := range ref.values {
 			filters = append(filters, query.Filter{
-				Dimension: ref.dim.Name, Level: ref.hier.Levels[li].Name, Members: []string{v},
+				Dimension: ref.dim.Name, Hierarchy: hName, Level: ref.hier.Levels[li].Name, Members: []string{v},
 			})
 		}
 	}

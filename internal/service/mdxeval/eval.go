@@ -103,6 +103,7 @@ func Evaluate(ctx context.Context, cube *metadata.Cube, q *mdx.Query, exec *quer
 		for bi := range ra.bindings {
 			qry.Filters = append(qry.Filters, query.Filter{
 				Dimension: ra.bindings[bi].ref.Dimension,
+				Hierarchy: ra.bindings[bi].ref.Hierarchy,
 				Level:     ra.bindings[bi].ref.Level,
 				Members:   distinctAt(ra.positions, bi),
 			})

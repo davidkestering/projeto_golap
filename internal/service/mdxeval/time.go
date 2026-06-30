@@ -22,7 +22,8 @@ func memberContext(ctx context.Context, cube *metadata.Cube, exec *queryexec.Ser
 		return query.LevelRef{}, nil, nil, 0, err
 	}
 	lvl := ref.hier.Levels[ref.levelIndex]
-	levelRef := query.LevelRef{Dimension: ref.dim.Name, Level: lvl.Name}
+	hName := ref.hier.EffectiveName(ref.dim)
+	levelRef := query.LevelRef{Dimension: ref.dim.Name, Hierarchy: hName, Level: lvl.Name}
 
 	var ancestors []query.Filter
 	for li, v := range ref.values {
@@ -30,7 +31,7 @@ func memberContext(ctx context.Context, cube *metadata.Cube, exec *queryexec.Ser
 			continue
 		}
 		ancestors = append(ancestors, query.Filter{
-			Dimension: ref.dim.Name, Level: ref.hier.Levels[li].Name, Members: []string{v},
+			Dimension: ref.dim.Name, Hierarchy: hName, Level: ref.hier.Levels[li].Name, Members: []string{v},
 		})
 	}
 
