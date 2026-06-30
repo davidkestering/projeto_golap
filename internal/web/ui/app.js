@@ -189,13 +189,18 @@ function renderFlat(res) {
   const cols = res.columns || [];
   const rows = res.rows || [];
   if (!cols.length) { $("#grid").innerHTML = '<div class="empty">sem dados</div>'; return; }
+  state.gridCtx = { mode: "flat", rows, levels: state.zones.rows };
   const isMeasure = cols.map((c) => c.kind === "measure");
   let html = "<table><thead><tr>";
   cols.forEach((c, i) => (html += `<th class="${isMeasure[i] ? "measure" : ""}">${esc(c.name)}</th>`));
   html += "</tr></thead><tbody>";
-  rows.forEach((row) => {
+  rows.forEach((row, ri) => {
     html += "<tr>";
-    row.forEach((cell, i) => (html += `<td class="${isMeasure[i] ? "measure" : ""}">${esc(cell.formatted)}</td>`));
+    row.forEach((cell, i) => {
+      const cls = isMeasure[i] ? "measure clickable" : "";
+      const attr = isMeasure[i] ? ` data-row="${ri}"` : "";
+      html += `<td class="${cls}"${attr}>${esc(cell.formatted)}</td>`;
+    });
     html += "</tr>";
   });
   html += "</tbody></table>";
@@ -223,6 +228,7 @@ function renderPivot(res, nRow, nCol, nMeas) {
     for (let m = 0; m < nMeas; m++) cell.set(rkS + SEP + ckS + SEP + m, r[nRow + nCol + m].formatted);
   });
 
+  state.gridCtx = { mode: "pivot", rowKeys, colKeys, rowLevels: state.zones.rows, colLevels: state.zones.cols };
   const rowHead = state.zones.rows.map((r) => r.level);
   let html = "<table><thead><tr>";
   rowHead.forEach((n) => (html += `<th rowspan="${nMeas > 1 ? 2 : 1}">${esc(n)}</th>`));
@@ -237,15 +243,15 @@ function renderPivot(res, nRow, nCol, nMeas) {
     html += "</tr>";
   }
   html += "</thead><tbody>";
-  rowKeys.forEach((rk) => {
+  rowKeys.forEach((rk, rki) => {
     const rkS = rk.join(SEP);
     html += "<tr>";
     rk.forEach((v) => (html += `<td>${esc(v)}</td>`));
-    colKeys.forEach((ck) => {
+    colKeys.forEach((ck, cki) => {
       const ckS = ck.join(SEP);
       for (let m = 0; m < nMeas; m++) {
         const v = cell.get(rkS + SEP + ckS + SEP + m);
-        html += `<td class="measure">${esc(v == null ? "" : v)}</td>`;
+        html += `<td class="measure clickable" data-r="${rki}" data-c="${cki}">${esc(v == null ? "" : v)}</td>`;
       }
     });
     html += "</tr>";
@@ -357,6 +363,80 @@ function drawChart(type, data) {
   }
 }
 
+// ---- drill-through ---------------------------------------------------------
+async function drillCell(contextFilters) {
+  const filters = contextFilters.concat(
+    state.zones.filters.map((f) => ({ dimension: f.dimension, level: f.level, members: f.members || [] }))
+  );
+  setStatus("drill-through…");
+  const { ok, body } = await api("/saiku/api/query/drillthrough", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cube: state.cube, filters, maxrows: 200 }),
+  });
+  if (!ok) { setStatus(body.error || "erro no drill-through", true); return; }
+  setStatus(`${body.rows.length} linha(s) de fato`);
+  openModal(body);
+}
+
+function gridCellFilters(td) {
+  const ctx = state.gridCtx;
+  if (!ctx) return null;
+  const out = [];
+  if (ctx.mode === "flat") {
+    const row = ctx.rows[+td.dataset.row];
+    ctx.levels.forEach((lv, k) => out.push({ dimension: lv.dimension, level: lv.level, members: [row[k].formatted] }));
+  } else {
+    const rk = ctx.rowKeys[+td.dataset.r], ck = ctx.colKeys[+td.dataset.c];
+    ctx.rowLevels.forEach((lv, k) => out.push({ dimension: lv.dimension, level: lv.level, members: [rk[k]] }));
+    ctx.colLevels.forEach((lv, k) => out.push({ dimension: lv.dimension, level: lv.level, members: [ck[k]] }));
+  }
+  return out;
+}
+
+function openModal(res) {
+  const cols = res.columns || [], rows = res.rows || [];
+  let html = "<table><thead><tr>" + cols.map((c) => `<th>${esc(c.name)}</th>`).join("") + "</tr></thead><tbody>";
+  rows.forEach((r) => (html += "<tr>" + r.map((c) => `<td>${esc(c.formatted)}</td>`).join("") + "</tr>"));
+  html += "</tbody></table>";
+  if (!rows.length) html = '<div class="empty">nenhuma linha de fato neste contexto</div>';
+  $("#modal-body").innerHTML = html;
+  $("#modal").hidden = false;
+}
+function closeModal() { $("#modal").hidden = true; }
+
+// ---- salvar / abrir consultas (localStorage) -------------------------------
+function savedQueries() {
+  try { return JSON.parse(localStorage.getItem("cubodw.queries") || "[]"); } catch { return []; }
+}
+function saveQuery() {
+  if (!state.cube) return;
+  const name = prompt("Nome da consulta:");
+  if (!name) return;
+  const list = savedQueries().filter((q) => q.name !== name);
+  list.push({ name, cube: state.cube, zones: state.zones });
+  localStorage.setItem("cubodw.queries", JSON.stringify(list));
+  refreshOpenSelect();
+  setStatus("consulta salva: " + name);
+}
+function refreshOpenSelect() {
+  const sel = $("#open");
+  sel.innerHTML = '<option value="">Abrir…</option>';
+  savedQueries().forEach((q) => {
+    const o = document.createElement("option");
+    o.value = q.name; o.textContent = q.name;
+    sel.appendChild(o);
+  });
+}
+async function openQuery(name) {
+  const q = savedQueries().find((x) => x.name === name);
+  if (!q) return;
+  $("#cube").value = q.cube;
+  await loadSchema(q.cube);            // popula campos e zera as zonas
+  state.zones = JSON.parse(JSON.stringify(q.zones));
+  renderZones();
+  setStatus("consulta aberta: " + name);
+}
+
 // ---- boot ------------------------------------------------------------------
 setupZones();
 $("#cube").addEventListener("change", (e) => loadSchema(e.target.value));
@@ -375,4 +455,15 @@ document.querySelectorAll(".seg").forEach((btn) => {
 window.addEventListener("resize", () => {
   if (state.last && state.view !== "table") drawChart(state.view, buildChartData(state.last));
 });
+$("#grid").addEventListener("click", (e) => {
+  const td = e.target.closest("td.clickable");
+  if (!td) return;
+  const filters = gridCellFilters(td);
+  if (filters) drillCell(filters);
+});
+$("#save").addEventListener("click", saveQuery);
+$("#open").addEventListener("change", (e) => { if (e.target.value) openQuery(e.target.value); });
+$("#modal-close").addEventListener("click", closeModal);
+$("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
+refreshOpenSelect();
 loadCubes();

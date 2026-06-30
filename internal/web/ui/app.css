@@ -69,3 +69,12 @@ th.grp{text-align:center;border-bottom:1px solid var(--accent)}
 td.measure,th.measure{text-align:right;font-variant-numeric:tabular-nums}
 tr:hover td{background:rgba(255,255,255,.025)}
 .empty{color:var(--muted);padding:24px;text-align:center}
+td.clickable{cursor:pointer}
+td.clickable:hover{background:#1d3354;outline:1px solid var(--accent)}
+
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:20}
+.modal-box{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  width:min(940px,92vw);max-height:82vh;display:flex;flex-direction:column;padding:14px}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.modal-head h3{margin:0;font-size:1rem}
+.modal .grid-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px}
