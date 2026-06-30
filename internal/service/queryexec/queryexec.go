@@ -113,7 +113,15 @@ func (s *Service) Run(ctx context.Context, cube *metadata.Cube, st *enginesql.St
 		}
 		cells := make([]query.Cell, len(vals))
 		for i, v := range vals {
-			cells[i] = query.Cell{Value: v, Formatted: formatValue(v)}
+			formatted := formatValue(v)
+			if i < len(st.Columns) {
+				if c := st.Columns[i]; c.Kind == "measure" && c.FormatString != "" {
+					if fv, ok := asFloat(v); ok {
+						formatted = query.Format(fv, c.FormatString)
+					}
+				}
+			}
+			cells[i] = query.Cell{Value: v, Formatted: formatted}
 		}
 		res.Rows = append(res.Rows, cells)
 	}

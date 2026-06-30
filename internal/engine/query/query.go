@@ -43,9 +43,10 @@ func (q *Query) AxisLevels() []LevelRef {
 
 // Column descreve uma coluna do resultado (um nível de eixo ou uma medida).
 type Column struct {
-	Name       string `json:"name"`
-	UniqueName string `json:"uniqueName"`
-	Kind       string `json:"kind"` // "level" | "measure"
+	Name         string `json:"name"`
+	UniqueName   string `json:"uniqueName"`
+	Kind         string `json:"kind"` // "level" | "measure"
+	FormatString string `json:"formatString,omitempty"`
 }
 
 // Cell é uma célula tipada do resultado.

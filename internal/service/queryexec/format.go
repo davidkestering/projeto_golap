@@ -6,8 +6,26 @@ import (
 	"time"
 )
 
+// asFloat converte um valor de célula para float64.
+func asFloat(v any) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case float32:
+		return float64(t), true
+	case int64:
+		return float64(t), true
+	case int32:
+		return float64(t), true
+	case int:
+		return float64(t), true
+	default:
+		return 0, false
+	}
+}
+
 // formatValue produz uma representação textual básica de uma célula. A
-// formatação rica por formatString da medida virá numa fase posterior.
+// formatação rica por formatString da medida é aplicada quando a coluna a tem.
 func formatValue(v any) string {
 	switch t := v.(type) {
 	case nil:

@@ -54,7 +54,7 @@ func BuildDrillthrough(d Dialect, cube *metadata.Cube, filters []query.Filter, m
 			continue // medidas só com expressão são puladas no drill-through
 		}
 		selectExprs = append(selectExprs, d.QuoteIdent(factAlias)+"."+d.QuoteIdent(m.Column)+"::float8")
-		st.Columns = append(st.Columns, query.Column{Name: m.Name, UniqueName: m.UniqueName(), Kind: "measure"})
+		st.Columns = append(st.Columns, query.Column{Name: m.Name, UniqueName: m.UniqueName(), Kind: "measure", FormatString: m.FormatString})
 	}
 	if len(selectExprs) == 0 {
 		return nil, fmt.Errorf("drill-through: nada para selecionar")

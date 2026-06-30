@@ -829,7 +829,11 @@ func pivot(q *mdx.Query, axes []resolvedAxis, ranges [][2]int, slots []measureSl
 			c := Cell{Coords: append([]int(nil), coords...)}
 			if ok {
 				c.Value = v
-				c.Formatted = formatNumber(v)
+				if s.base != nil && s.base.FormatString != "" {
+					c.Formatted = query.Format(v, s.base.FormatString)
+				} else {
+					c.Formatted = formatNumber(v)
+				}
 			}
 			cs.Cells = append(cs.Cells, c)
 		}

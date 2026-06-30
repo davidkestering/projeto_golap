@@ -65,9 +65,10 @@ func Build(d Dialect, cube *metadata.Cube, q query.Query) (*Statement, error) {
 		}
 		selectExprs = append(selectExprs, expr)
 		st.Columns = append(st.Columns, query.Column{
-			Name:       m.Name,
-			UniqueName: m.UniqueName(),
-			Kind:       "measure",
+			Name:         m.Name,
+			UniqueName:   m.UniqueName(),
+			Kind:         "measure",
+			FormatString: m.FormatString,
 		})
 	}
 
