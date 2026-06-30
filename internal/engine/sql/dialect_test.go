@@ -32,6 +32,33 @@ func TestMySQLBuild(t *testing.T) {
 	}
 }
 
+func TestDuckDBBuild(t *testing.T) {
+	c := salesCube(t)
+	q := query.Query{
+		Cube:     "Sales",
+		Rows:     []query.LevelRef{{Dimension: "Time", Level: "Year"}},
+		Measures: []string{"Unit Sales"},
+		Filters:  []query.Filter{{Dimension: "Customers", Level: "Country", Members: []string{"USA"}}},
+	}
+	st, err := enginesql.Build(enginesql.DuckDB{}, c, q)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	want := `SELECT "Time"."the_year", CAST(sum("f"."unit_sales") AS DOUBLE)
+FROM "sales_fact_1997" AS "f"
+JOIN "time_by_day" AS "Time" ON "f"."time_id" = "Time"."time_id"
+JOIN "customer" AS "Customers" ON "f"."customer_id" = "Customers"."customer_id"
+WHERE CAST("Customers"."country" AS VARCHAR) IN (?)
+GROUP BY "Time"."the_year"
+ORDER BY 1`
+	if st.SQL != want {
+		t.Errorf("SQL DuckDB inesperada:\n--- got ---\n%s\n--- want ---\n%s", st.SQL, want)
+	}
+	if !reflect.DeepEqual(st.Args, []any{"USA"}) {
+		t.Errorf("args = %#v", st.Args)
+	}
+}
+
 func TestSQLServerDrillthroughTop(t *testing.T) {
 	c := salesCube(t)
 	st, err := enginesql.BuildDrillthrough(enginesql.SQLServer{}, c,
