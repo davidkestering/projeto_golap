@@ -127,8 +127,8 @@ make down          # derruba a stack</code></pre>
   <tr><td><code>CUBODW_CACHE_SIZE</code></td><td><code>256</code></td><td>Nº máx. de resultados em cache (FIFO por SQL+args). <code>0</code> desabilita</td></tr>
   <tr><td><code>CUBODW_AUTH_ENABLED</code></td><td><code>true</code></td><td>Liga a autenticação e o middleware de proteção</td></tr>
   <tr><td><code>CUBODW_AUTH_SECRET</code></td><td>— <span class="muted">(dev)</span></td><td>Segredo HMAC que assina os cookies de sessão. <strong>Defina em produção</strong></td></tr>
-  <tr><td><code>CUBODW_USERS_FILE</code></td><td>—</td><td>Caminho JSON para persistir usuários. Vazio: store só em memória</td></tr>
-  <tr><td><code>CUBODW_SCHEMAS_DIR</code></td><td>—</td><td>Dir gravável para persistir cubos adicionados em runtime. Vazio: só em memória</td></tr>
+  <tr><td><code>CUBODW_USERS_FILE</code></td><td><code>/data/users/users.json</code> <span class="muted">(compose)</span></td><td>JSON que persiste usuários. Vazio: store só em memória</td></tr>
+  <tr><td><code>CUBODW_SCHEMAS_DIR</code></td><td><code>/data/schemas</code> <span class="muted">(compose)</span></td><td>Dir que persiste cubos adicionados em runtime. Vazio: só em memória</td></tr>
 </table>
 <div class="note">O host expõe o engine em <code>localhost:8088</code> (mapeado para a porta 8080 do container). O PostgreSQL fica em <code>localhost:5432</code> (usuário/senha <code>cubodw</code>, banco <code>foodmart</code>). Com a autenticação ligada (padrão), faça login com o admin semeado <code>admin / admin</code> antes de chamar a API.</div>
 
@@ -523,8 +523,9 @@ cubes:
 <p>Carregue um schema fixo no boot via <code>CUBODW_SCHEMA=/caminho/arquivo.xml</code>
 (ou <code>.yml</code>), <strong>ou adicione cubos em tempo de execução</strong> pela UI
 (botão <strong>⬢ Cubos</strong>, admin) / API <code>POST /saiku/api/schemas</code> — ver
-seções <a href="#api">8</a> e <a href="#ui">10</a>. Para persistir os adicionados entre
-reinícios, defina <code>CUBODW_SCHEMAS_DIR</code>.</p>
+seções <a href="#api">8</a> e <a href="#ui">10</a>. A <strong>persistência já vem ligada</strong>
+no <code>docker-compose.yml</code> (volumes locais em <code>deploy/data/</code>): cubos
+adicionados e usuários registrados <strong>sobrevivem a restarts</strong>.</p>
 
 <!-- ========================================================= -->
 <h2 id="limitacoes">14. Limitações (ainda não suportado)</h2>

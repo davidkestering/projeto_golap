@@ -127,8 +127,8 @@ make down          # derriba el stack</code></pre>
   <tr><td><code>CUBODW_CACHE_SIZE</code></td><td><code>256</code></td><td>Máx. de resultados en caché (FIFO por SQL+args). <code>0</code> deshabilita</td></tr>
   <tr><td><code>CUBODW_AUTH_ENABLED</code></td><td><code>true</code></td><td>Activa la autenticación y el middleware de protección</td></tr>
   <tr><td><code>CUBODW_AUTH_SECRET</code></td><td>— <span class="muted">(dev)</span></td><td>Secreto HMAC que firma las cookies de sesión. <strong>Defínelo en producción</strong></td></tr>
-  <tr><td><code>CUBODW_USERS_FILE</code></td><td>—</td><td>Ruta JSON para persistir usuarios. Vacío: store solo en memoria</td></tr>
-  <tr><td><code>CUBODW_SCHEMAS_DIR</code></td><td>—</td><td>Dir grabable para persistir cubos añadidos en runtime. Vacío: solo en memoria</td></tr>
+  <tr><td><code>CUBODW_USERS_FILE</code></td><td><code>/data/users/users.json</code> <span class="muted">(compose)</span></td><td>JSON que persiste usuarios. Vacío: store solo en memoria</td></tr>
+  <tr><td><code>CUBODW_SCHEMAS_DIR</code></td><td><code>/data/schemas</code> <span class="muted">(compose)</span></td><td>Dir que persiste cubos añadidos en runtime. Vacío: solo en memoria</td></tr>
 </table>
 <div class="note">El host expone el engine en <code>localhost:8088</code> (mapeado al puerto 8080 del contenedor). PostgreSQL está en <code>localhost:5432</code> (usuario/contraseña <code>cubodw</code>, base <code>foodmart</code>). Con la autenticación activa (por defecto), inicia sesión con el admin sembrado <code>admin / admin</code> antes de llamar a la API.</div>
 
@@ -484,8 +484,9 @@ cubes:
 <p>Carga un esquema fijo en el arranque vía <code>CUBODW_SCHEMA=/ruta/archivo.xml</code>
 (o <code>.yml</code>), <strong>o añade cubos en tiempo de ejecución</strong> desde la UI
 (botón <strong>⬢ Cubos</strong>, admin) / API <code>POST /saiku/api/schemas</code> — ver
-secciones <a href="#api">8</a> y <a href="#ui">10</a>. Para persistir los añadidos entre
-reinicios, define <code>CUBODW_SCHEMAS_DIR</code>.</p>
+secciones <a href="#api">8</a> y <a href="#ui">10</a>. La <strong>persistencia ya viene activada</strong>
+en <code>docker-compose.yml</code> (volúmenes locales en <code>deploy/data/</code>): los cubos
+añadidos y los usuarios registrados <strong>sobreviven a reinicios</strong>.</p>
 
 <!-- ========================================================= -->
 <h2 id="limitaciones">14. Limitaciones (aún no soportado)</h2>
