@@ -9,6 +9,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
+
+	"golang.org/x/text/runes"
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 
 	"cubodw/internal/engine/metadata"
 )
@@ -152,11 +157,40 @@ func (s *Service) resolveNamesLocked(sc *metadata.Schema) (schemaName string, cu
 	return schemaName, cubeNames
 }
 
-// normalizeName mantém apenas letras/dígitos ASCII e devolve em MAIÚSCULAS
-// (sem espaços nem caracteres especiais — "tudo junto").
-func normalizeName(s string) string {
+// translitMap cobre letras/ligaduras que não decompõem via NFD.
+var translitMap = map[rune]string{
+	'ø': "o", 'Ø': "O", 'æ': "ae", 'Æ': "AE", 'œ': "oe", 'Œ': "OE",
+	'ß': "ss", 'đ': "d", 'Đ': "D", 'ł': "l", 'Ł': "L",
+	'þ': "th", 'Þ': "TH", 'ð': "d", 'Ð': "D",
+}
+
+// deAccent decompõe (NFD), remove marcas diacríticas e recompõe — assim
+// á→a, ç→c, ã→a, ñ→n, ü→u, etc.
+var deAccent = transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+
+// transliterate converte acentos/diacríticos (e algumas ligaduras) para ASCII.
+func transliterate(s string) string {
 	var b strings.Builder
 	for _, r := range s {
+		if rep, ok := translitMap[r]; ok {
+			b.WriteString(rep)
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	out, _, err := transform.String(deAccent, b.String())
+	if err != nil {
+		return b.String()
+	}
+	return out
+}
+
+// normalizeName translitera acentos/caracteres especiais para ASCII, descarta o
+// que sobrar (espaços, símbolos) e devolve em MAIÚSCULAS, "tudo junto".
+// Ex.: "Inventário Geral" → "INVENTARIOGERAL"; "São Paulo" → "SAOPAULO".
+func normalizeName(s string) string {
+	var b strings.Builder
+	for _, r := range transliterate(s) {
 		switch {
 		case r >= 'a' && r <= 'z':
 			b.WriteRune(r - ('a' - 'A'))

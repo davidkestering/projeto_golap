@@ -349,7 +349,7 @@ curl -X POST localhost:8088/saiku/api/auth/register \
   "filters":{"Time.Year":["1997"]}}'</code></pre>
 
 <h4><span class="tag get">GET</span> <code>/saiku/api/schemas</code> · <span class="tag post">POST</span> <code>/schemas/validate</code> · <code>/schemas</code> <span class="muted">(admin)</span> · <span class="tag post">DELETE</span> <code>/schemas/{name}</code> <span class="muted">(admin)</span></h4>
-<p><strong>Gerenciador de cubos</strong>: lista, valida (dry-run), <strong>adiciona</strong> e remove schemas em tempo de execução. Corpo: <code>{"content":"…","format":"yaml|xml"}</code> (YAML de autoria ou Mondrian XML). Os nomes de cubo/schema são normalizados (MAIÚSCULAS, sem espaços/especiais) e nomes repetidos recebem sufixo incremental <code>V1</code>/<code>V2</code>/… — nunca há colisão.</p>
+<p><strong>Gerenciador de cubos</strong>: lista, valida (dry-run), <strong>adiciona</strong> e remove schemas em tempo de execução. Corpo: <code>{"content":"…","format":"yaml|xml"}</code> (YAML de autoria ou Mondrian XML). Os nomes de cubo/schema são normalizados (MAIÚSCULAS; acentos transliterados — á→a, ç→c; espaços/símbolos removidos) e nomes repetidos recebem sufixo incremental <code>V1</code>/<code>V2</code>/… — nunca há colisão.</p>
 
 <h4><span class="tag get">GET</span> <code>/saiku/api/cache</code> · <span class="tag post">POST</span> <code>/saiku/api/cache/clear</code> <span class="muted">(admin)</span></h4>
 <p>Métricas do cache (<code>hits</code>, <code>misses</code>, <code>size</code>) e limpeza (papel <code>admin</code>).</p>
