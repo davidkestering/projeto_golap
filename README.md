@@ -197,6 +197,13 @@ padrão. Sessão por **cookie assinado (HMAC)**, senhas em **bcrypt**, papéis
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.
 
+**Gerenciador de cubos** (`internal/web/schemas.go`, `discover` multi-schema): cria e
+**registra cubos em tempo de execução** — na UI (botão **⬢ Cubos**, só admin) ou via API:
+- `GET /saiku/api/schemas` (listar) · `POST /saiku/api/schemas/validate` (dry-run)
+- `POST /saiku/api/schemas` (adicionar — admin) · `DELETE /saiku/api/schemas/{name}` (admin)
+- aceita **YAML de autoria** ou **Mondrian XML**; rejeita colisão de nome de cubo/schema (409).
+- `CUBODW_SCHEMAS_DIR`: dir gravável para **persistir** os cubos adicionados (vazio = só memória).
+
 > Engine exposto em **localhost:8088** (host 8088 → container 8080, para não
 > conflitar com a porta 8080 já usada no host). Postgres em localhost:5432
 > (user/pass `cubodw`, db `foodmart`).

@@ -127,6 +127,7 @@ make down          # derruba a stack</code></pre>
   <tr><td><code>CUBODW_AUTH_ENABLED</code></td><td><code>true</code></td><td>Liga a autenticação e o middleware de proteção</td></tr>
   <tr><td><code>CUBODW_AUTH_SECRET</code></td><td>— <span class="muted">(dev)</span></td><td>Segredo HMAC que assina os cookies de sessão. <strong>Defina em produção</strong></td></tr>
   <tr><td><code>CUBODW_USERS_FILE</code></td><td>—</td><td>Caminho JSON para persistir usuários. Vazio: store só em memória</td></tr>
+  <tr><td><code>CUBODW_SCHEMAS_DIR</code></td><td>—</td><td>Dir gravável para persistir cubos adicionados em runtime. Vazio: só em memória</td></tr>
 </table>
 <div class="note">O host expõe o engine em <code>localhost:8088</code> (mapeado para a porta 8080 do container). O PostgreSQL fica em <code>localhost:5432</code> (usuário/senha <code>cubodw</code>, banco <code>foodmart</code>). Com a autenticação ligada (padrão), faça login com o admin semeado <code>admin / admin</code> antes de chamar a API.</div>
 
@@ -346,6 +347,9 @@ curl -X POST localhost:8088/saiku/api/auth/register \
   "cube":"Sales","measures":["Unit Sales"],"rows":["Store.Store State"],
   "filters":{"Time.Year":["1997"]}}'</code></pre>
 
+<h4><span class="tag get">GET</span> <code>/saiku/api/schemas</code> · <span class="tag post">POST</span> <code>/schemas/validate</code> · <code>/schemas</code> <span class="muted">(admin)</span> · <span class="tag post">DELETE</span> <code>/schemas/{name}</code> <span class="muted">(admin)</span></h4>
+<p><strong>Gerenciador de cubos</strong>: lista, valida (dry-run), <strong>adiciona</strong> e remove schemas em tempo de execução. Corpo: <code>{"content":"…","format":"yaml|xml"}</code> (YAML de autoria ou Mondrian XML). Colisão de nome de cubo/schema → <code>409</code>.</p>
+
 <h4><span class="tag get">GET</span> <code>/saiku/api/cache</code> · <span class="tag post">POST</span> <code>/saiku/api/cache/clear</code> <span class="muted">(admin)</span></h4>
 <p>Métricas do cache (<code>hits</code>, <code>misses</code>, <code>size</code>) e limpeza (papel <code>admin</code>).</p>
 <p class="muted">Códigos: <code>400</code> nome inválido · <code>401</code> não autenticado · <code>403</code> requer admin · <code>404</code> cubo inexistente · <code>503</code> sem banco.</p>
@@ -430,6 +434,7 @@ FROM [Cubo]
   <tr><td>Salvar/abrir</td><td>Consultas salvas em <code>localStorage</code></td></tr>
   <tr><td>Formatação, CSV, ordenação, paginação</td><td>Medidas formatadas; exportar CSV; ordenar clicando no cabeçalho; paginação (100/página) na tabela achatada</td></tr>
   <tr><td>Login/registro e <em>sair</em></td><td>Overlay de autenticação; o cabeçalho mostra <code>usuário · papel</code></td></tr>
+  <tr><td>Gerenciar cubos <span class="muted">(admin)</span></td><td>Botão <strong>⬢ Cubos</strong> → modal que lista/remove schemas e <strong>adiciona um cubo</strong> colando YAML/XML (Validar/Adicionar/Exemplo); o seletor de cubos é recarregado</td></tr>
 </table>
 
 <!-- ========================================================= -->

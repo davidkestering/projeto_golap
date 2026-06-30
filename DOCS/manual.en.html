@@ -127,6 +127,7 @@ make down          # tear the stack down</code></pre>
   <tr><td><code>CUBODW_AUTH_ENABLED</code></td><td><code>true</code></td><td>Enables authentication and the protection middleware</td></tr>
   <tr><td><code>CUBODW_AUTH_SECRET</code></td><td>— <span class="muted">(dev)</span></td><td>HMAC secret that signs session cookies. <strong>Set in production</strong></td></tr>
   <tr><td><code>CUBODW_USERS_FILE</code></td><td>—</td><td>JSON path to persist users. Empty: in-memory store only</td></tr>
+  <tr><td><code>CUBODW_SCHEMAS_DIR</code></td><td>—</td><td>Writable dir to persist cubes added at runtime. Empty: in-memory only</td></tr>
 </table>
 <div class="note">The host exposes the engine at <code>localhost:8088</code> (mapped to the container's 8080). PostgreSQL is at <code>localhost:5432</code> (user/password <code>cubodw</code>, database <code>foodmart</code>). With authentication on (the default), log in with the seeded admin <code>admin / admin</code> before calling the API.</div>
 
@@ -313,6 +314,9 @@ curl -X POST localhost:8088/saiku/api/auth/register \
 <h4><span class="tag get">GET</span> <code>/saiku/api/ai/cubes</code> · <code>/ai/schema/{cube}</code> · <span class="tag post">POST</span> <code>/ai/query</code></h4>
 <p><strong>AI Query API</strong>: queries cubes <em>without MDX</em>, with a self-describing schema (sample members) and typed validation. On a name error it returns <code>{status, field, available:[…]}</code> for self-correction.</p>
 
+<h4><span class="tag get">GET</span> <code>/saiku/api/schemas</code> · <span class="tag post">POST</span> <code>/schemas/validate</code> · <code>/schemas</code> <span class="muted">(admin)</span> · <span class="tag post">DELETE</span> <code>/schemas/{name}</code> <span class="muted">(admin)</span></h4>
+<p><strong>Cube manager</strong>: list, validate (dry-run), <strong>add</strong> and remove schemas at runtime. Body: <code>{"content":"…","format":"yaml|xml"}</code> (authoring YAML or Mondrian XML). Cube/schema name collision → <code>409</code>.</p>
+
 <h4><span class="tag get">GET</span> <code>/saiku/api/cache</code> · <span class="tag post">POST</span> <code>/saiku/api/cache/clear</code> <span class="muted">(admin)</span></h4>
 <p>Cache metrics (<code>hits</code>, <code>misses</code>, <code>size</code>) and clearing (<code>admin</code> role).</p>
 <p class="muted">Codes: <code>400</code> invalid name · <code>401</code> unauthenticated · <code>403</code> admin required · <code>404</code> unknown cube · <code>503</code> no database.</p>
@@ -391,6 +395,7 @@ FROM [Cube]
   <tr><td>Save/open</td><td>Queries saved in <code>localStorage</code></td></tr>
   <tr><td>Formatting, CSV, sort, pagination</td><td>Formatted measures; CSV export; click-header sort; pagination (100/page) on the flat table</td></tr>
   <tr><td>Login/register and <em>logout</em></td><td>Auth overlay; the header shows <code>user · role</code></td></tr>
+  <tr><td>Manage cubes <span class="muted">(admin)</span></td><td><strong>⬢ Cubos</strong> button → modal that lists/removes schemas and <strong>adds a cube</strong> by pasting YAML/XML (Validate/Add/Example); the cube selector reloads</td></tr>
 </table>
 
 <!-- ========================================================= -->
