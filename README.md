@@ -31,8 +31,14 @@ cubo de demonstração **FoodMart** carregado automaticamente no primeiro boot
 | ℹ️ Info do serviço | `curl localhost:8088/saiku/api/info` |
 | 📖 Manual técnico | abra [`DOCS/index.html`](DOCS/index.html) no navegador |
 
-Para derrubar: `make down`. (Sem `make` no host? Use
-`docker compose -f deploy/docker-compose.yml up --build -d`.)
+Para derrubar: `make down`. **Sem `make` no host?** Crie os diretórios de
+persistência (graváveis pelo container) e suba pelo compose:
+
+```sh
+mkdir -p deploy/data/schemas deploy/data/users
+chmod 777 deploy/data/schemas deploy/data/users
+docker compose -f deploy/docker-compose.yml up --build -d
+```
 
 > O engine fica em **localhost:8088** (host 8088 → container 8080). O PostgreSQL
 > fica em **localhost:5432** (user/senha `cubodw`, banco `foodmart`).
@@ -144,10 +150,12 @@ cubes:
 - O **formato completo** (XML e YAML, com hierarquias, tempo, parent-child) está
   no manual, seção *Formatos de schema*.
 
-> **Persistência:** cubos adicionados em runtime valem para a sessão. Para que
-> sobrevivam a um restart, defina `CUBODW_SCHEMAS_DIR` apontando para um diretório
-> gravável (montado como volume) — o engine recarrega os schemas de lá na subida.
-> Alternativa: aponte `CUBODW_SCHEMA` para um arquivo de schema fixo no boot.
+> **Persistência (ligada por padrão):** o `docker-compose.yml` monta volumes
+> **locais** em `deploy/data/` — os cubos adicionados (`deploy/data/schemas/`) e os
+> usuários registrados (`deploy/data/users/`) **sobrevivem a restarts**. O engine
+> recarrega os schemas de lá na subida. Esses dados são ignorados pelo git
+> (`.gitignore`). Alternativa: aponte `CUBODW_SCHEMA` para um arquivo de schema
+> fixo no boot.
 
 ---
 
@@ -158,15 +166,16 @@ cubes:
 | `CUBODW_HTTP_ADDR` | `:8080` | Endereço HTTP (dentro do container) |
 | `CUBODW_PG_DSN` | (no compose) | DSN do PostgreSQL. Vazio → `/ready` reporta `no-db` |
 | `CUBODW_SCHEMA` | — | Schema fixo no boot (`.xml` Mondrian \| `.yml/.yaml` YAML). Vazio → FoodMart embutido |
-| `CUBODW_SCHEMAS_DIR` | — | Dir gravável para **persistir** cubos adicionados em runtime |
+| `CUBODW_SCHEMAS_DIR` | `/data/schemas` *(compose)* | Dir para **persistir** cubos adicionados em runtime. Vazio → só memória |
 | `CUBODW_CACHE_SIZE` | `256` | Nº de resultados em cache (FIFO). `0` desabilita |
 | `CUBODW_AUTH_ENABLED` | `true` | Liga a autenticação + middleware de proteção |
 | `CUBODW_AUTH_SECRET` | (dev) | Segredo HMAC que assina os cookies. **Defina em produção** |
-| `CUBODW_USERS_FILE` | — | Persiste usuários em JSON (vazio = só memória) |
+| `CUBODW_USERS_FILE` | `/data/users/users.json` *(compose)* | Persiste usuários em JSON. Vazio → só memória |
 | `CUBODW_CONNECTION` | `foodmart` | Nome lógico da conexão na descoberta |
 
-No `make up`, o `CUBODW_PG_DSN` já vem configurado no `deploy/docker-compose.yml`
-apontando para o Postgres da stack — não precisa fazer nada para o demo funcionar.
+No `make up`, o `CUBODW_PG_DSN`, `CUBODW_SCHEMAS_DIR` e `CUBODW_USERS_FILE` já vêm
+configurados no `deploy/docker-compose.yml` (Postgres da stack + volumes locais em
+`deploy/data/`) — não precisa fazer nada para o demo persistir cubos e usuários.
 
 ---
 

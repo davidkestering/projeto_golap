@@ -3,8 +3,12 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+
+	"cubodw/internal/config"
 )
 
 const testCubeYAML = `schema: TestSchema
@@ -137,6 +141,44 @@ func TestSchemasAdminOnly(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("user comum adicionando: status = %d, quero 403", resp.StatusCode)
+	}
+}
+
+func TestSchemasPersistence(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Config{HTTPAddr: ":0", ConnectionName: "foodmart", SchemasDir: dir}
+
+	// servidor 1: adiciona um cubo -> deve persistir um arquivo no dir
+	s1, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer 1: %v", err)
+	}
+	ts1 := httptest.NewServer(s1.http.Handler)
+	resp, _ := postSchema(ts1.URL, "/saiku/api/schemas", testCubeYAML)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("add: status = %d", resp.StatusCode)
+	}
+	ts1.Close()
+
+	files, _ := os.ReadDir(dir)
+	if len(files) == 0 {
+		t.Fatal("nenhum schema persistido no dir")
+	}
+
+	// servidor 2 (novo processo simulado) no MESMO dir: deve recarregar o cubo
+	s2, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer 2: %v", err)
+	}
+	ts2 := httptest.NewServer(s2.http.Handler)
+	defer ts2.Close()
+	resp, _ = http.Get(ts2.URL + "/saiku/api/ai/cubes")
+	var cubes []map[string]any
+	json.NewDecoder(resp.Body).Decode(&cubes)
+	resp.Body.Close()
+	if !hasCube(cubes, "TESTCUBE") {
+		t.Errorf("cubo não sobreviveu ao restart: %v", cubes)
 	}
 }
 

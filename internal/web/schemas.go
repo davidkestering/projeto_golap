@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 
 	"cubodw/internal/engine/metadata"
 	"cubodw/internal/engine/schema/mondrian"
@@ -19,8 +21,17 @@ import (
 // (ver isAdminOnly em auth.go). A persistência em disco é opcional (dir vazio =
 // só em memória).
 type schemasAPI struct {
-	svc *discover.Service
-	dir string
+	svc   *discover.Service
+	dir   string
+	mu    sync.Mutex
+	files map[string]string // nome final do schema -> caminho do arquivo persistido
+}
+
+// newSchemasAPI cria a API e carrega os schemas já persistidos em dir (se houver).
+// Devolve avisos por arquivo que falhou ao carregar.
+func newSchemasAPI(svc *discover.Service, dir string) (*schemasAPI, []string) {
+	a := &schemasAPI{svc: svc, dir: dir, files: map[string]string{}}
+	return a, a.loadDir()
 }
 
 func (a *schemasAPI) register(mux *http.ServeMux) {
@@ -123,22 +134,27 @@ func (a *schemasAPI) handleAdd(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	// Normaliza os nomes (MAIÚSCULAS, sem espaços/especiais) e versiona colisões
-	// (V1/V2/…). Nunca falha por colisão.
-	if _, err := a.svc.RegisterSchema(sc); err != nil {
+	// Normaliza os nomes (MAIÚSCULAS, transliterado, sem espaços/especiais) e
+	// versiona colisões (V1/V2/…). Nunca falha por colisão.
+	final, err := a.svc.RegisterSchema(sc)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	if a.dir != "" {
-		if err := a.persist(sc.Name, ext, req.Content); err != nil {
+		path, perr := a.persist(final.Name, ext, req.Content)
+		if perr != nil {
 			// Não desfaz o registro em memória; só avisa.
 			writeJSON(w, http.StatusCreated, map[string]any{
-				"schema": summarize(sc), "warning": "registrado, mas falhou ao persistir: " + err.Error(),
+				"schema": summarize(final), "warning": "registrado, mas falhou ao persistir: " + perr.Error(),
 			})
 			return
 		}
+		a.mu.Lock()
+		a.files[final.Name] = path
+		a.mu.Unlock()
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"schema": summarize(sc)})
+	writeJSON(w, http.StatusCreated, map[string]any{"schema": summarize(final)})
 }
 
 func (a *schemasAPI) handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -147,9 +163,12 @@ func (a *schemasAPI) handleDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "schema não encontrado"})
 		return
 	}
-	if a.dir != "" {
-		a.removeFiles(name)
+	a.mu.Lock()
+	if path, ok := a.files[name]; ok {
+		_ = os.Remove(path)
+		delete(a.files, name)
 	}
+	a.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "removed", "name": name})
 }
 
@@ -168,31 +187,30 @@ func sanitizeName(name string) string {
 	return b.String()
 }
 
-func (a *schemasAPI) persist(name, ext, content string) error {
+func (a *schemasAPI) persist(name, ext, content string) (string, error) {
 	if err := os.MkdirAll(a.dir, 0o755); err != nil {
-		return err
+		return "", err
 	}
-	return os.WriteFile(filepath.Join(a.dir, sanitizeName(name)+"."+ext), []byte(content), 0o644)
+	path := filepath.Join(a.dir, sanitizeName(name)+"."+ext)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
-func (a *schemasAPI) removeFiles(name string) {
-	base := filepath.Join(a.dir, sanitizeName(name))
-	for _, ext := range []string{".yaml", ".yml", ".xml"} {
-		_ = os.Remove(base + ext)
-	}
-}
-
-// loadSchemasDir carrega todos os schemas de um diretório (yaml/xml) e os
-// registra no serviço. Erros por arquivo são devolvidos como avisos.
-func loadSchemasDir(svc *discover.Service, dir string) []string {
+// loadDir carrega (em ordem determinística) todos os schemas do diretório
+// (yaml/xml), registra cada um e mapeia nome final → arquivo. Erros por arquivo
+// viram avisos.
+func (a *schemasAPI) loadDir() []string {
 	var warnings []string
-	if dir == "" {
+	if a.dir == "" {
 		return warnings
 	}
-	entries, err := os.ReadDir(dir)
+	entries, err := os.ReadDir(a.dir)
 	if err != nil {
 		return warnings // dir ainda não existe: nada a carregar
 	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -201,7 +219,8 @@ func loadSchemasDir(svc *discover.Service, dir string) []string {
 		if ext != ".yaml" && ext != ".yml" && ext != ".xml" {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		path := filepath.Join(a.dir, e.Name())
+		b, err := os.ReadFile(path)
 		if err != nil {
 			warnings = append(warnings, e.Name()+": "+err.Error())
 			continue
@@ -211,9 +230,12 @@ func loadSchemasDir(svc *discover.Service, dir string) []string {
 			warnings = append(warnings, e.Name()+": "+err.Error())
 			continue
 		}
-		if _, err := svc.RegisterSchema(sc); err != nil {
+		final, err := a.svc.RegisterSchema(sc)
+		if err != nil {
 			warnings = append(warnings, e.Name()+": "+err.Error())
+			continue
 		}
+		a.files[final.Name] = path
 	}
 	return warnings
 }

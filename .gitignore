@@ -18,5 +18,11 @@ saiku-4.5.2.zip:Zone.Identifier
 # Dados locais
 /testdata/foodmart/*.local
 
+# Persistência local (cubos adicionados em runtime, usuários) — manter só os dirs
+/deploy/data/schemas/*
+/deploy/data/users/*
+!/deploy/data/schemas/.gitkeep
+!/deploy/data/users/.gitkeep
+
 # SO / editor
 .DS_Store

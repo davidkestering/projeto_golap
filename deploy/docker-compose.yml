@@ -26,6 +26,14 @@ services:
     environment:
       CUBODW_HTTP_ADDR: ":8080"
       CUBODW_PG_DSN: "postgres://cubodw:cubodw@postgres:5432/foodmart?sslmode=disable"
+      # Persistência local (bind mounts abaixo): cubos adicionados em runtime e
+      # usuários sobrevivem a restarts. Os dirs ficam em deploy/data/ (criados
+      # com permissão de escrita pelo `make up`).
+      CUBODW_SCHEMAS_DIR: "/data/schemas"
+      CUBODW_USERS_FILE: "/data/users/users.json"
+    volumes:
+      - ./data/schemas:/data/schemas
+      - ./data/users:/data/users
     ports:
       # Host 8088 -> container 8080 (evita conflito com outros serviços na 8080 do host).
       - "8088:8080"

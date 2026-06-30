@@ -10,7 +10,7 @@ DOCKER_GO = docker run --rm \
 	-v cubodw-gobuild:/root/.cache/go-build \
 	$(GOIMG)
 
-.PHONY: tidy vet test build up down logs ps image clean
+.PHONY: tidy vet test build up down logs ps image clean datadirs
 
 tidy:        ## go mod tidy (gera go.sum)
 	$(DOCKER_GO) go mod tidy
@@ -24,7 +24,11 @@ test:        ## go test
 build:       ## compila tudo (sem gerar binário)
 	$(DOCKER_GO) go build ./...
 
-up:          ## sobe a stack (engine + postgres:16)
+datadirs:    ## cria os dirs locais de persistência (graváveis pelo container nonroot)
+	mkdir -p deploy/data/schemas deploy/data/users
+	chmod 777 deploy/data/schemas deploy/data/users
+
+up: datadirs ## sobe a stack (engine + postgres:16)
 	$(COMPOSE) up --build -d
 
 down:        ## derruba a stack
