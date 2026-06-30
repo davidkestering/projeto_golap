@@ -11,6 +11,10 @@ const state = {
 
 // Zonas (id da div -> chave no estado).
 const ZONES = [["zone-rows", "rows"], ["zone-cols", "cols"], ["zone-measures", "measures"], ["zone-filters", "filters"]];
+const PAGE_SIZE = 100;
+state.flatRes = null;
+state.sort = { col: -1, dir: 1 };
+state.page = 0;
 
 const $ = (sel) => document.querySelector(sel);
 const api = (path, opts) => fetch(path, opts).then((r) => r.json().then((j) => ({ ok: r.ok, body: j })));
@@ -184,17 +188,49 @@ function renderResult(res) {
   }
 }
 
-// Tabela achatada (sem zona Colunas).
+// Tabela achatada (sem zona Colunas), com ordenação por cabeçalho e paginação.
 function renderFlat(res) {
+  state.flatRes = res;
+  state.sort = { col: -1, dir: 1 };
+  state.page = 0;
+  renderFlatView();
+}
+
+function setSort(col) {
+  if (state.sort.col === col) state.sort.dir = -state.sort.dir;
+  else state.sort = { col, dir: 1 };
+  state.page = 0;
+  renderFlatView();
+}
+
+function renderFlatView() {
+  const res = state.flatRes;
   const cols = res.columns || [];
-  const rows = res.rows || [];
   if (!cols.length) { $("#grid").innerHTML = '<div class="empty">sem dados</div>'; return; }
-  state.gridCtx = { mode: "flat", rows, levels: state.zones.rows };
   const isMeasure = cols.map((c) => c.kind === "measure");
+
+  let rows = res.rows.slice();
+  const sc = state.sort.col;
+  if (sc >= 0) {
+    const meas = isMeasure[sc], dir = state.sort.dir;
+    rows.sort((a, b) => {
+      if (meas) return ((+a[sc].value || 0) - (+b[sc].value || 0)) * dir;
+      return String(a[sc].value).localeCompare(String(b[sc].value), "pt") * dir;
+    });
+  }
+  const total = rows.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (state.page >= pages) state.page = pages - 1;
+  const pageRows = rows.slice(state.page * PAGE_SIZE, (state.page + 1) * PAGE_SIZE);
+  state.gridCtx = { mode: "flat", rows: pageRows, levels: state.zones.rows };
+
   let html = "<table><thead><tr>";
-  cols.forEach((c, i) => (html += `<th class="${isMeasure[i] ? "measure" : ""}">${esc(c.name)}</th>`));
+  cols.forEach((c, i) => {
+    const arrow = sc === i ? (state.sort.dir > 0 ? " ▲" : " ▼") : "";
+    html += `<th class="sortable ${isMeasure[i] ? "measure" : ""}" data-col="${i}">${esc(c.name)}${arrow}</th>`;
+  });
   html += "</tr></thead><tbody>";
-  rows.forEach((row, ri) => {
+  pageRows.forEach((row, ri) => {
     html += "<tr>";
     row.forEach((cell, i) => {
       const cls = isMeasure[i] ? "measure clickable" : "";
@@ -204,6 +240,13 @@ function renderFlat(res) {
     html += "</tr>";
   });
   html += "</tbody></table>";
+  if (total > PAGE_SIZE) {
+    html += `<div class="pager">
+      <button class="ghost" data-page="prev"${state.page <= 0 ? " disabled" : ""}>← anterior</button>
+      <span>página ${state.page + 1} de ${pages} · ${total} linhas</span>
+      <button class="ghost" data-page="next"${state.page >= pages - 1 ? " disabled" : ""}>próxima →</button>
+    </div>`;
+  }
   $("#grid").innerHTML = html;
 }
 
@@ -560,6 +603,14 @@ window.addEventListener("resize", () => {
   if (state.last && state.view !== "table") drawChart(state.view, buildChartData(state.last));
 });
 $("#grid").addEventListener("click", (e) => {
+  const th = e.target.closest("th.sortable");
+  if (th) { setSort(+th.dataset.col); return; }
+  const pg = e.target.closest("[data-page]");
+  if (pg && !pg.disabled) {
+    if (pg.dataset.page === "prev") state.page--; else state.page++;
+    renderFlatView();
+    return;
+  }
   const td = e.target.closest("td.clickable");
   if (!td) return;
   const filters = gridCellFilters(td);

@@ -173,6 +173,8 @@ indexado por SQL+args — beneficia query JSON, MDX e drill-through. Ligado por
 - **Salvar/abrir consultas** (localStorage).
 - **Editor MDX**: escrever, **Validar** (`/mdx/parse`) e **Executar**
   (`/mdx/execute`), além de **gerar MDX a partir do construtor**.
+- **Formatação de medidas** (formatString do schema), **exportar CSV**,
+  **ordenar** clicando no cabeçalho e **paginação** (tabela achatada).
 
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.

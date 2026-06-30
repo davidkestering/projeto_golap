@@ -73,6 +73,10 @@ table{border-collapse:collapse;width:100%;font-size:.85rem}
 th,td{border-bottom:1px solid var(--border);padding:6px 12px;text-align:left;white-space:nowrap}
 th{background:var(--soft);position:sticky;top:0;color:#eef2f8}
 th.grp{text-align:center;border-bottom:1px solid var(--accent)}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:#fff}
+.pager{display:flex;gap:14px;align-items:center;justify-content:center;padding:10px;color:var(--muted);font-size:.85rem}
+.pager button[disabled]{opacity:.4;cursor:default}
 td.measure,th.measure{text-align:right;font-variant-numeric:tabular-nums}
 tr:hover td{background:rgba(255,255,255,.025)}
 .empty{color:var(--muted);padding:24px;text-align:center}
