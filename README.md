@@ -126,9 +126,13 @@ curl -s -X POST localhost:8088/saiku/api/mdx/execute -H 'Content-Type: applicati
 Agregações sobre conjuntos em calc: `Sum`/`Avg`/`Count`/`Aggregate` e também
 **`Min`/`Max`** (estes via agregação por membro + redução em Go).
 
+Também suportados: **named sets** (`WITH SET`), **ranges** (`m1 : m2`),
+**múltiplas hierarquias** por dimensão (ex.: `[Time].[Weekly].[Week]`) e
+**parent-child** plano (ex.: `[Employees].[Employee Id].Members` exibido por nome).
+
 Ainda **não** suportados (erro claro): mostrar todos os membros em `CrossJoin`
-(multi-binding ainda via fato), snowflake. Em desenvolvimento: named sets,
-ranges (`:`), múltiplas hierarquias, parent-child, mais dialetos SQL.
+(multi-binding via fato), snowflake, navegação de árvore/rollup recursivo em
+parent-child. Em desenvolvimento: mais dialetos SQL (MySQL/DuckDB/SQL Server).
 
 **Fase 9.1 (AI Query API):** surface tipada para agentes/LLMs consultarem cubos
 **sem MDX** (`internal/web/ai.go`):

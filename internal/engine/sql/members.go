@@ -27,7 +27,7 @@ func BuildLevelMembers(d Dialect, cube *metadata.Cube, ref query.LevelRef, filte
 		return nil, fmt.Errorf("nível %q em tabela %q (snowflake) — enumeração via dimensão não suportada", lvl.Name, lvl.Table)
 	}
 	alias := dim.Name
-	colExpr := d.QuoteIdent(alias) + "." + d.QuoteIdent(lvl.Column)
+	colExpr := d.QuoteIdent(alias) + "." + d.QuoteIdent(lvl.DisplayColumn())
 
 	st := &Statement{
 		Columns: []query.Column{{Name: lvl.Name, UniqueName: lvl.UniqueName(dim, hier), Kind: "level"}},

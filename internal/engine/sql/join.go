@@ -38,12 +38,12 @@ func (js *joinSet) levelExpr(dim *metadata.Dimension, hier *metadata.Hierarchy, 
 		if dim.ForeignKey != "" {
 			return "", fmt.Errorf("dimensão %q usa Join/snowflake, ainda não suportado na geração de SQL", dim.Name)
 		}
-		return js.d.QuoteIdent(factAlias) + "." + js.d.QuoteIdent(lvl.Column), nil
+		return js.d.QuoteIdent(factAlias) + "." + js.d.QuoteIdent(lvl.DisplayColumn()), nil
 	}
 
 	// Dimensão degenerada cuja tabela é a própria fato: sem JOIN.
 	if tableName == js.cube.Fact.Table {
-		return js.d.QuoteIdent(factAlias) + "." + js.d.QuoteIdent(lvl.Column), nil
+		return js.d.QuoteIdent(factAlias) + "." + js.d.QuoteIdent(lvl.DisplayColumn()), nil
 	}
 
 	// Dimensão normal: JOIN fato.FK = dim.PK.
@@ -61,7 +61,7 @@ func (js *joinSet) levelExpr(dim *metadata.Dimension, hier *metadata.Hierarchy, 
 			js.d.QuoteIdent(alias), js.d.QuoteIdent(hier.PrimaryKey),
 		))
 	}
-	return js.d.QuoteIdent(alias) + "." + js.d.QuoteIdent(lvl.Column), nil
+	return js.d.QuoteIdent(alias) + "." + js.d.QuoteIdent(lvl.DisplayColumn()), nil
 }
 
 func (js *joinSet) ordered() []string { return js.order }

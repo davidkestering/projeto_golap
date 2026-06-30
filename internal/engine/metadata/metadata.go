@@ -66,8 +66,24 @@ type Level struct {
 	LevelType     string // "Regular" | "TimeYears" | "TimeQuarters" | "TimeMonths" | ...
 	UniqueMembers bool
 	Table         string // tabela do nível (snowflake); vazio = tabela da hierarquia
-	Properties    []*Property
+	// NameColumn: coluna de exibição dos membros (quando difere de Column).
+	NameColumn string
+	// ParentColumn: presente em hierarquias parent-child (auto-referência).
+	ParentColumn    string
+	NullParentValue string
+	Properties      []*Property
 }
+
+// DisplayColumn devolve a coluna de exibição (NameColumn se houver, senão Column).
+func (l *Level) DisplayColumn() string {
+	if l.NameColumn != "" {
+		return l.NameColumn
+	}
+	return l.Column
+}
+
+// IsParentChild indica se o nível é parent-child (auto-referência via ParentColumn).
+func (l *Level) IsParentChild() bool { return l.ParentColumn != "" }
 
 // Property é um atributo de membro num nível.
 type Property struct {

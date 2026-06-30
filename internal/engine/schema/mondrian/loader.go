@@ -135,12 +135,15 @@ func (xh *xmlHierarchy) toIR() *metadata.Hierarchy {
 
 func (xl *xmlLevel) toIR() *metadata.Level {
 	l := &metadata.Level{
-		Name:          xl.Name,
-		Column:        xl.Column,
-		Type:          xl.Type,
-		LevelType:     firstNonEmpty(xl.LevelType, "Regular"),
-		UniqueMembers: boolDefault(xl.UniqueMembers, false),
-		Table:         xl.Table,
+		Name:            xl.Name,
+		Column:          xl.Column,
+		Type:            xl.Type,
+		LevelType:       firstNonEmpty(xl.LevelType, "Regular"),
+		UniqueMembers:   boolDefault(xl.UniqueMembers, false),
+		Table:           xl.Table,
+		NameColumn:      xl.NameColumn,
+		ParentColumn:    xl.ParentColumn,
+		NullParentValue: xl.NullParentValue,
 	}
 	for _, p := range xl.Properties {
 		l.Properties = append(l.Properties, &metadata.Property{Name: p.Name, Column: p.Column, Type: p.Type})

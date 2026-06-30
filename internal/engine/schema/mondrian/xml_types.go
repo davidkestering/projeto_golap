@@ -54,13 +54,16 @@ type xmlHierarchy struct {
 }
 
 type xmlLevel struct {
-	Name          string        `xml:"name,attr"`
-	Column        string        `xml:"column,attr"`
-	Table         string        `xml:"table,attr"`
-	Type          string        `xml:"type,attr"`
-	LevelType     string        `xml:"levelType,attr"`
-	UniqueMembers *bool         `xml:"uniqueMembers,attr"`
-	Properties    []xmlProperty `xml:"Property"`
+	Name            string        `xml:"name,attr"`
+	Column          string        `xml:"column,attr"`
+	Table           string        `xml:"table,attr"`
+	Type            string        `xml:"type,attr"`
+	LevelType       string        `xml:"levelType,attr"`
+	NameColumn      string        `xml:"nameColumn,attr"`
+	ParentColumn    string        `xml:"parentColumn,attr"`
+	NullParentValue string        `xml:"nullParentValue,attr"`
+	UniqueMembers   *bool         `xml:"uniqueMembers,attr"`
+	Properties      []xmlProperty `xml:"Property"`
 }
 
 type xmlProperty struct {
