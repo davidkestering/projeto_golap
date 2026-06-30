@@ -20,7 +20,22 @@
   <button id="save" class="ghost">💾 Salvar</button>
   <select id="open"><option value="">Abrir…</option></select>
   <span id="status" class="status"></span>
+  <span id="whoami" class="whoami"></span>
+  <button id="logout" class="ghost" hidden>sair</button>
 </header>
+
+<div id="auth" class="auth-overlay" hidden>
+  <form id="auth-form" class="auth-box">
+    <div class="auth-brand">CuboDW</div>
+    <h2 id="auth-mode-label">Entrar</h2>
+    <input id="auth-user" placeholder="usuário" autocomplete="username" required>
+    <input id="auth-pass" type="password" placeholder="senha" autocomplete="current-password" required>
+    <button type="submit" class="primary" id="auth-submit">Entrar</button>
+    <p class="auth-toggle"><span id="auth-switch-text">Não tem conta?</span> <a href="#" id="auth-switch">Registrar</a></p>
+    <p id="auth-error" class="auth-err"></p>
+    <p class="auth-hint">demo: <code>admin / admin</code></p>
+  </form>
+</div>
 
 <main>
   <aside class="fields">

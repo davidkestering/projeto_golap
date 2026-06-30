@@ -584,6 +584,51 @@ function renderCellSet(cs) {
   $("#grid").innerHTML = html;
 }
 
+// ---- autenticação ----------------------------------------------------------
+let authMode = "login";
+
+async function checkAuth() {
+  const { ok, body } = await api("/saiku/api/auth/me");
+  if (ok) { showApp(body); } else { showLogin(); }
+}
+function showApp(me) {
+  $("#auth").hidden = true;
+  if (me && me.username && !me.authDisabled) {
+    $("#whoami").textContent = me.username + " · " + me.role;
+    $("#logout").hidden = false;
+  }
+  loadCubes();
+}
+function showLogin() {
+  $("#auth").hidden = false;
+  $("#auth-user").focus();
+}
+async function doAuth(e) {
+  e.preventDefault();
+  const username = $("#auth-user").value.trim(), password = $("#auth-pass").value;
+  const path = authMode === "login" ? "/saiku/api/auth/login" : "/saiku/api/auth/register";
+  const { ok, body } = await api(path, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }),
+  });
+  if (!ok) { $("#auth-error").textContent = body.error || "falha na autenticação"; return; }
+  $("#auth-error").textContent = "";
+  showApp(body);
+}
+function switchAuthMode(e) {
+  e.preventDefault();
+  authMode = authMode === "login" ? "register" : "login";
+  const reg = authMode === "register";
+  $("#auth-mode-label").textContent = reg ? "Criar conta" : "Entrar";
+  $("#auth-submit").textContent = reg ? "Registrar" : "Entrar";
+  $("#auth-switch-text").textContent = reg ? "Já tem conta?" : "Não tem conta?";
+  $("#auth-switch").textContent = reg ? "Entrar" : "Registrar";
+  $("#auth-error").textContent = "";
+}
+async function logout() {
+  await api("/saiku/api/auth/logout", { method: "POST" });
+  location.reload();
+}
+
 // ---- boot ------------------------------------------------------------------
 setupZones();
 $("#cube").addEventListener("change", (e) => loadSchema(e.target.value));
@@ -625,5 +670,8 @@ $("#mdx-run").addEventListener("click", mdxExecute);
 $("#mdx-validate").addEventListener("click", mdxValidate);
 $("#mdx-from-builder").addEventListener("click", () => { $("#mdx-text").value = mdxFromBuilder(); setStatus("MDX gerado do construtor"); });
 $("#export-csv").addEventListener("click", exportCSV);
+$("#auth-form").addEventListener("submit", doAuth);
+$("#auth-switch").addEventListener("click", switchAuthMode);
+$("#logout").addEventListener("click", logout);
 refreshOpenSelect();
-loadCubes();
+checkAuth();

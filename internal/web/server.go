@@ -18,6 +18,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"cubodw/internal/auth"
 	"cubodw/internal/config"
 	"cubodw/internal/demo"
 	"cubodw/internal/engine/metadata"
@@ -69,12 +70,26 @@ func NewServer(cfg config.Config) (*Server, error) {
 	exec := queryexec.New(pool, cfg.CacheSize)
 	s.exec = exec
 
+	store, err := auth.NewStore(cfg.UsersFile)
+	if err != nil {
+		return nil, err
+	}
+	secret := []byte(cfg.AuthSecret)
+	if len(secret) == 0 {
+		secret = []byte("cubodw-dev-secret-change-me")
+		if cfg.AuthEnabled {
+			log.Warn("CUBODW_AUTH_SECRET não definido — usando secret de desenvolvimento")
+		}
+	}
+	authA := &authAPI{store: store, secret: secret, enabled: cfg.AuthEnabled}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /ready", s.handleReady)
 	mux.HandleFunc("GET /saiku/api/info", s.handleInfo)
 	mux.HandleFunc("GET /saiku/api/cache", s.handleCacheStats)
 	mux.HandleFunc("POST /saiku/api/cache/clear", s.handleCacheClear)
+	authA.register(mux)
 	(&discoverAPI{svc: s.discover}).register(mux)
 	(&queryAPI{discover: s.discover, exec: exec}).register(mux)
 	(&mdxAPI{discover: s.discover, exec: exec}).register(mux)
@@ -83,8 +98,11 @@ func NewServer(cfg config.Config) (*Server, error) {
 
 	s.http = &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           authA.middleware(mux),
 		ReadHeaderTimeout: 10 * time.Second,
+	}
+	if cfg.AuthEnabled {
+		log.Info("autenticação ligada", "usersFile", cfg.UsersFile != "")
 	}
 	return s, nil
 }

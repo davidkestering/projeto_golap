@@ -184,6 +184,16 @@ indexado por SQL+args — beneficia query JSON, MDX e drill-through. Ligado por
 - **Formatação de medidas** (formatString do schema), **exportar CSV**,
   **ordenar** clicando no cabeçalho e **paginação** (tabela achatada).
 
+**Autenticação + papéis** (`internal/auth`, `internal/web/auth.go`): ligada por
+padrão. Sessão por **cookie assinado (HMAC)**, senhas em **bcrypt**, papéis
+**admin/user**, admin semeado (**admin/admin**).
+- `POST /saiku/api/auth/register` — **registro aberto** (cria usuário `user`)
+- `POST /saiku/api/auth/login` · `POST /saiku/api/auth/logout` · `GET /saiku/api/auth/me`
+- Middleware protege `/saiku/api/*` (públicos: `/health`, `/ready`, `/saiku/api/info`,
+  `/saiku/api/auth/*`, `/ui/*`); ações admin-only (ex.: `cache/clear`) exigem `admin`.
+- Env: `CUBODW_AUTH_ENABLED` (default `true`), `CUBODW_AUTH_SECRET` (assinatura;
+  defina em produção), `CUBODW_USERS_FILE` (persiste usuários em JSON; vazio = memória).
+
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.
 
@@ -214,7 +224,7 @@ make up
 curl localhost:8088/health   # {"status":"ok"}
 curl localhost:8088/ready    # {"status":"ready"} quando conectado ao Postgres
 curl localhost:8088/saiku/api/info
-# 👉 UI drag-and-drop:  http://localhost:8088/ui/
+# 👉 UI drag-and-drop:  http://localhost:8088/ui/  (login demo: admin / admin)
 make down
 ```
 

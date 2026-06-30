@@ -5,6 +5,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config reúne os parâmetros de execução do motor.
@@ -21,6 +22,12 @@ type Config struct {
 	ConnectionName string
 	// CacheSize é o nº máximo de resultados em cache (0 desabilita).
 	CacheSize int
+	// AuthEnabled liga a autenticação (default true).
+	AuthEnabled bool
+	// AuthSecret assina os cookies de sessão (HMAC). Vazio usa um default de dev.
+	AuthSecret string
+	// UsersFile persiste os usuários em JSON; vazio = só em memória.
+	UsersFile string
 }
 
 // FromEnv monta a Config a partir do ambiente, aplicando defaults sensatos.
@@ -34,6 +41,20 @@ func FromEnv() Config {
 		SchemaPath:     os.Getenv("CUBODW_SCHEMA"),
 		ConnectionName: getenv("CUBODW_CONNECTION", "foodmart"),
 		CacheSize:      getenvInt("CUBODW_CACHE_SIZE", 256),
+		AuthEnabled:    getenvBool("CUBODW_AUTH_ENABLED", true),
+		AuthSecret:     os.Getenv("CUBODW_AUTH_SECRET"),
+		UsersFile:      os.Getenv("CUBODW_USERS_FILE"),
+	}
+}
+
+func getenvBool(key string, def bool) bool {
+	switch strings.ToLower(os.Getenv(key)) {
+	case "1", "true", "on", "yes":
+		return true
+	case "0", "false", "off", "no":
+		return false
+	default:
+		return def
 	}
 }
 

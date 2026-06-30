@@ -18,6 +18,19 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#06121f
 button.ghost{background:transparent;color:var(--muted)}
 .status{color:var(--muted);font-size:.82rem;margin-left:auto}
 .status.err{color:#ff9090}
+.whoami{color:var(--accent-2);font-size:.8rem}
+
+.auth-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50}
+.auth-box{background:var(--panel);border:1px solid var(--border);border-radius:14px;
+  padding:28px;width:min(360px,92vw);display:flex;flex-direction:column;gap:12px}
+.auth-brand{font-weight:700;font-size:1.3rem;text-align:center}
+.auth-box h2{margin:0;font-size:1rem;color:var(--muted);text-align:center;font-weight:500}
+.auth-box input{background:var(--soft);color:var(--text);border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px;font-size:.95rem}
+.auth-box .primary{padding:10px;font-size:.95rem}
+.auth-toggle{text-align:center;color:var(--muted);font-size:.85rem;margin:2px 0}
+.auth-err{color:#ff9090;font-size:.85rem;text-align:center;min-height:1em;margin:0}
+.auth-hint{text-align:center;color:var(--muted);font-size:.78rem;margin:0}
 
 main{display:grid;grid-template-columns:260px 1fr;gap:0;height:calc(100vh - 53px)}
 aside.fields{background:var(--panel);border-right:1px solid var(--border);
