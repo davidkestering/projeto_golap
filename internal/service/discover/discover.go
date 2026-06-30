@@ -6,6 +6,7 @@ package discover
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -97,29 +98,93 @@ func (s *Service) HasSchema(name string) bool {
 	return s.indexOf(name) >= 0
 }
 
-// AddSchema registra um novo schema. Erro se o nome já existir ou se algum nome
-// de cubo colidir com um cubo já registrado.
-func (s *Service) AddSchema(sc *metadata.Schema) error {
-	if sc == nil || strings.TrimSpace(sc.Name) == "" {
-		return fmt.Errorf("schema sem nome")
+// RegisterSchema registra um schema aplicando as regras de nome (ver
+// normalizeName): nomes de schema e de cubos viram MAIÚSCULAS, sem espaços nem
+// caracteres especiais, e colisões recebem sufixo incremental V1/V2/V3…. Nunca
+// falha por colisão — sempre encontra um nome livre. Muta sc com os nomes finais.
+func (s *Service) RegisterSchema(sc *metadata.Schema) (*metadata.Schema, error) {
+	if sc == nil {
+		return nil, fmt.Errorf("schema nulo")
 	}
 	if len(sc.Cubes) == 0 {
-		return fmt.Errorf("schema %q não define cubos", sc.Name)
+		return nil, fmt.Errorf("schema %q não define cubos", sc.Name)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.indexOf(sc.Name) >= 0 {
-		return fmt.Errorf("schema %q já existe", sc.Name)
-	}
-	for _, c := range sc.Cubes {
-		for _, existing := range s.schemas {
-			if _, ok := existing.FindCube(c.Name); ok {
-				return fmt.Errorf("cubo %q já existe no schema %q", c.Name, existing.Name)
-			}
-		}
+	schemaName, cubeNames := s.resolveNamesLocked(sc)
+	sc.Name = schemaName
+	for i, c := range sc.Cubes {
+		c.Name = cubeNames[i]
 	}
 	s.schemas = append(s.schemas, sc)
-	return nil
+	return sc, nil
+}
+
+// PreviewRegister calcula (sem registrar) os nomes finais que o schema receberia
+// se fosse adicionado agora — útil para o dry-run de validação.
+func (s *Service) PreviewRegister(sc *metadata.Schema) (schemaName string, cubeNames []string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.resolveNamesLocked(sc)
+}
+
+// resolveNamesLocked devolve o nome de schema e os nomes de cubos finais
+// (normalizados + desambiguados contra o que já está registrado e entre si).
+func (s *Service) resolveNamesLocked(sc *metadata.Schema) (schemaName string, cubeNames []string) {
+	schemaTaken := map[string]bool{}
+	for _, e := range s.schemas {
+		schemaTaken[strings.ToUpper(e.Name)] = true
+	}
+	schemaName = uniqueName(normalizeOrDefault(sc.Name, "SCHEMA"), schemaTaken)
+
+	cubeTaken := map[string]bool{}
+	for _, e := range s.schemas {
+		for _, c := range e.Cubes {
+			cubeTaken[strings.ToUpper(c.Name)] = true
+		}
+	}
+	cubeNames = make([]string, len(sc.Cubes))
+	for i, c := range sc.Cubes {
+		n := uniqueName(normalizeOrDefault(c.Name, "CUBE"), cubeTaken)
+		cubeTaken[n] = true
+		cubeNames[i] = n
+	}
+	return schemaName, cubeNames
+}
+
+// normalizeName mantém apenas letras/dígitos ASCII e devolve em MAIÚSCULAS
+// (sem espaços nem caracteres especiais — "tudo junto").
+func normalizeName(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r - ('a' - 'A'))
+		case (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func normalizeOrDefault(s, def string) string {
+	if n := normalizeName(s); n != "" {
+		return n
+	}
+	return def
+}
+
+// uniqueName devolve base se livre; senão base+"V1", base+"V2", … até um livre.
+func uniqueName(base string, taken map[string]bool) string {
+	if !taken[base] {
+		return base
+	}
+	for n := 1; ; n++ {
+		cand := base + "V" + strconv.Itoa(n)
+		if !taken[cand] {
+			return cand
+		}
+	}
 }
 
 // RemoveSchema remove um schema pelo nome; devolve false se não existir.

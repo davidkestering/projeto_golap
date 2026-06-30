@@ -101,7 +101,15 @@ func (a *schemasAPI) handleValidate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"valid": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"valid": true, "schema": summarize(sc)})
+	// Mostra os nomes FINAIS que o schema receberia (normalizados + versionados).
+	schemaName, cubeNames := a.svc.PreviewRegister(sc)
+	info := schemaInfo{Name: schemaName}
+	for i, c := range sc.Cubes {
+		info.Cubes = append(info.Cubes, cubeSummary{
+			Name: cubeNames[i], Measures: len(c.Measures), Dimensions: len(c.Dimensions),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"valid": true, "schema": info})
 }
 
 func (a *schemasAPI) handleAdd(w http.ResponseWriter, r *http.Request) {
@@ -115,8 +123,10 @@ func (a *schemasAPI) handleAdd(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if err := a.svc.AddSchema(sc); err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+	// Normaliza os nomes (MAIÚSCULAS, sem espaços/especiais) e versiona colisões
+	// (V1/V2/…). Nunca falha por colisão.
+	if _, err := a.svc.RegisterSchema(sc); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	if a.dir != "" {
@@ -201,7 +211,7 @@ func loadSchemasDir(svc *discover.Service, dir string) []string {
 			warnings = append(warnings, e.Name()+": "+err.Error())
 			continue
 		}
-		if err := svc.AddSchema(sc); err != nil {
+		if _, err := svc.RegisterSchema(sc); err != nil {
 			warnings = append(warnings, e.Name()+": "+err.Error())
 		}
 	}

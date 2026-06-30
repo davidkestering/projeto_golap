@@ -675,7 +675,7 @@ function schemaStatus(msg, kind) {
 async function validateSchema() {
   const { ok, body } = await api("/saiku/api/schemas/validate", postJSON({ content: $("#schema-text").value }));
   if (ok && body.valid) {
-    schemaStatus(`válido ✓ — schema "${body.schema.name}": ${(body.schema.cubes || []).map((c) => c.name).join(", ")}`, "ok");
+    schemaStatus(`válido ✓ — será salvo como schema "${body.schema.name}": ${(body.schema.cubes || []).map((c) => c.name).join(", ")}`, "ok");
   } else schemaStatus(body.error || "inválido", "err");
 }
 async function addSchema() {

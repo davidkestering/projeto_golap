@@ -22,73 +22,106 @@ cubes:
           - {name: L, column: l}
 `
 
-func postSchema(ts string, path, yaml string) (*http.Response, error) {
+func postSchema(ts, path, yaml string) (*http.Response, error) {
 	body, _ := json.Marshal(map[string]string{"content": yaml})
 	return http.Post(ts+path, "application/json", strings.NewReader(string(body)))
 }
 
-func TestSchemasValidateAddListDelete(t *testing.T) {
+// addedNames adiciona um schema e devolve os nomes finais (schema, primeiro cubo).
+func addedNames(t *testing.T, ts, yaml string) (string, string) {
+	t.Helper()
+	resp, _ := postSchema(ts, "/saiku/api/schemas", yaml)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("add: status = %d, quero 201", resp.StatusCode)
+	}
+	var b struct {
+		Schema struct {
+			Name  string `json:"name"`
+			Cubes []struct {
+				Name string `json:"name"`
+			} `json:"cubes"`
+		} `json:"schema"`
+	}
+	json.NewDecoder(resp.Body).Decode(&b)
+	return b.Schema.Name, b.Schema.Cubes[0].Name
+}
+
+func TestSchemasAddListDelete(t *testing.T) {
 	ts := newTestServer(t) // auth desligada neste helper
 	defer ts.Close()
 
-	// validar (dry-run)
+	// validar (dry-run) já devolve o nome FINAL normalizado (MAIÚSCULO).
 	resp, _ := postSchema(ts.URL, "/saiku/api/schemas/validate", testCubeYAML)
 	var vb map[string]any
 	json.NewDecoder(resp.Body).Decode(&vb)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || vb["valid"] != true {
-		t.Fatalf("validate: %d %v", resp.StatusCode, vb)
+	if vb["valid"] != true {
+		t.Fatalf("validate: %v", vb)
 	}
 
-	// adicionar
-	resp, _ = postSchema(ts.URL, "/saiku/api/schemas", testCubeYAML)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("add: status = %d, quero 201", resp.StatusCode)
+	schemaName, cubeName := addedNames(t, ts.URL, testCubeYAML)
+	if schemaName != "TESTSCHEMA" || cubeName != "TESTCUBE" {
+		t.Fatalf("nomes normalizados inesperados: schema=%q cubo=%q", schemaName, cubeName)
 	}
 
-	// agora aparece na descoberta
+	// aparece na descoberta com o nome normalizado
 	resp, _ = http.Get(ts.URL + "/saiku/api/ai/cubes")
 	var cubes []map[string]any
 	json.NewDecoder(resp.Body).Decode(&cubes)
 	resp.Body.Close()
-	if !hasCube(cubes, "TestCube") {
-		t.Errorf("TestCube não apareceu na descoberta: %v", cubes)
+	if !hasCube(cubes, "TESTCUBE") {
+		t.Errorf("TESTCUBE não apareceu na descoberta: %v", cubes)
 	}
 
-	// remover
-	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/saiku/api/schemas/TestSchema", nil)
+	// remover pelo nome final
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/saiku/api/schemas/"+schemaName, nil)
 	resp, _ = http.DefaultClient.Do(req)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("delete: status = %d, quero 200", resp.StatusCode)
 	}
-	resp, _ = http.Get(ts.URL + "/saiku/api/ai/cubes")
-	json.NewDecoder(resp.Body).Decode(&cubes)
-	resp.Body.Close()
-	if hasCube(cubes, "TestCube") {
-		t.Errorf("TestCube ainda presente após remoção")
-	}
 }
 
-func TestSchemasInvalidAndCollision(t *testing.T) {
+func TestSchemasNormalizeAndVersion(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
 
-	// conteúdo inválido => 400
+	// nome com espaços/caracteres especiais => MAIÚSCULAS, tudo junto.
+	yaml := strings.Replace(testCubeYAML, "name: TestCube", "name: \"Vendas Mensais!@ 2024\"", 1)
+	yaml = strings.Replace(yaml, "schema: TestSchema", "schema: \"Meu Schema\"", 1)
+	sname, cname := addedNames(t, ts.URL, yaml)
+	if sname != "MEUSCHEMA" || cname != "VENDASMENSAIS2024" {
+		t.Fatalf("normalização inesperada: schema=%q cubo=%q", sname, cname)
+	}
+
+	// colisão com o FoodMart: cubo "Sales" => "SALES" já existe => "SALESV1".
+	collide := strings.Replace(testCubeYAML, "name: TestCube", "name: Sales", 1)
+	collide = strings.Replace(collide, "schema: TestSchema", "schema: S1", 1)
+	_, c1 := addedNames(t, ts.URL, collide)
+	if c1 != "SALESV1" {
+		t.Errorf("primeira colisão: cubo = %q, quero SALESV1", c1)
+	}
+	// de novo => SALESV2; e mais uma => SALESV3 (incremental, mesmo já existindo V1).
+	collide2 := strings.Replace(collide, "schema: S1", "schema: S2", 1)
+	_, c2 := addedNames(t, ts.URL, collide2)
+	if c2 != "SALESV2" {
+		t.Errorf("segunda colisão: cubo = %q, quero SALESV2", c2)
+	}
+	collide3 := strings.Replace(collide, "schema: S1", "schema: S3", 1)
+	_, c3 := addedNames(t, ts.URL, collide3)
+	if c3 != "SALESV3" {
+		t.Errorf("terceira colisão: cubo = %q, quero SALESV3", c3)
+	}
+}
+
+func TestSchemasInvalid(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
 	resp, _ := postSchema(ts.URL, "/saiku/api/schemas", "isto não é um schema válido :::")
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("inválido: status = %d, quero 400", resp.StatusCode)
-	}
-
-	// cubo cujo nome colide com o FoodMart (Sales) => 409
-	collide := strings.Replace(testCubeYAML, "name: TestCube", "name: Sales", 1)
-	collide = strings.Replace(collide, "schema: TestSchema", "schema: Other", 1)
-	resp, _ = postSchema(ts.URL, "/saiku/api/schemas", collide)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusConflict {
-		t.Errorf("colisão: status = %d, quero 409", resp.StatusCode)
 	}
 }
 
@@ -99,7 +132,6 @@ func TestSchemasAdminOnly(t *testing.T) {
 	cli.Post(ts.URL+"/saiku/api/auth/register", "application/json",
 		strings.NewReader(`{"username":"comum","password":"p"}`))
 
-	// usuário comum não pode adicionar => 403
 	body, _ := json.Marshal(map[string]string{"content": testCubeYAML})
 	resp, _ := cli.Post(ts.URL+"/saiku/api/schemas", "application/json", strings.NewReader(string(body)))
 	resp.Body.Close()

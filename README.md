@@ -135,7 +135,10 @@ cubes:
 - As **tabelas/colunas referenciadas precisam existir no banco** conectado
   (acima usamos tabelas reais do FoodMart). Para apontar para o **seu** banco,
   ajuste o DSN em `CUBODW_PG_DSN` (ver Configuração).
-- Nomes de cubo/schema **não podem colidir** com os já registrados (erro `409`).
+- Nomes de cubo/schema são **normalizados**: viram **MAIÚSCULAS**, sem espaços
+  nem caracteres especiais (tudo junto); nomes **repetidos** recebem sufixo
+  incremental **V1**, **V2**, **V3**… — nunca há conflito (ex.: `Vendas 2024` →
+  `VENDAS2024`; um segundo `Sales` → `SALESV1`).
 - Também é aceito **Mondrian XML** (`{"content":"<Schema …>", "format":"xml"}`).
 - O **formato completo** (XML e YAML, com hierarquias, tempo, parent-child) está
   no manual, seção *Formatos de schema*.

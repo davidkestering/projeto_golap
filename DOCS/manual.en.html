@@ -316,7 +316,7 @@ curl -X POST localhost:8088/saiku/api/auth/register \
 <p><strong>AI Query API</strong>: queries cubes <em>without MDX</em>, with a self-describing schema (sample members) and typed validation. On a name error it returns <code>{status, field, available:[…]}</code> for self-correction.</p>
 
 <h4><span class="tag get">GET</span> <code>/saiku/api/schemas</code> · <span class="tag post">POST</span> <code>/schemas/validate</code> · <code>/schemas</code> <span class="muted">(admin)</span> · <span class="tag post">DELETE</span> <code>/schemas/{name}</code> <span class="muted">(admin)</span></h4>
-<p><strong>Cube manager</strong>: list, validate (dry-run), <strong>add</strong> and remove schemas at runtime. Body: <code>{"content":"…","format":"yaml|xml"}</code> (authoring YAML or Mondrian XML). Cube/schema name collision → <code>409</code>.</p>
+<p><strong>Cube manager</strong>: list, validate (dry-run), <strong>add</strong> and remove schemas at runtime. Body: <code>{"content":"…","format":"yaml|xml"}</code> (authoring YAML or Mondrian XML). Cube/schema names are normalized (UPPERCASE, no spaces/specials) and duplicates get an incremental <code>V1</code>/<code>V2</code>/… suffix — never a collision.</p>
 
 <h4><span class="tag get">GET</span> <code>/saiku/api/cache</code> · <span class="tag post">POST</span> <code>/saiku/api/cache/clear</code> <span class="muted">(admin)</span></h4>
 <p>Cache metrics (<code>hits</code>, <code>misses</code>, <code>size</code>) and clearing (<code>admin</code> role).</p>

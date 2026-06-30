@@ -316,7 +316,7 @@ curl -X POST localhost:8088/saiku/api/auth/register \
 <p><strong>AI Query API</strong>: consulta cubos <em>sin MDX</em>, con esquema auto-descriptivo (miembros de muestra) y validación tipada. Ante un error de nombre, devuelve <code>{status, field, available:[…]}</code> para autocorrección.</p>
 
 <h4><span class="tag get">GET</span> <code>/saiku/api/schemas</code> · <span class="tag post">POST</span> <code>/schemas/validate</code> · <code>/schemas</code> <span class="muted">(admin)</span> · <span class="tag post">DELETE</span> <code>/schemas/{name}</code> <span class="muted">(admin)</span></h4>
-<p><strong>Gestor de cubos</strong>: lista, valida (dry-run), <strong>añade</strong> y elimina esquemas en tiempo de ejecución. Cuerpo: <code>{"content":"…","format":"yaml|xml"}</code> (YAML de autoría o Mondrian XML). Colisión de nombre de cubo/esquema → <code>409</code>.</p>
+<p><strong>Gestor de cubos</strong>: lista, valida (dry-run), <strong>añade</strong> y elimina esquemas en tiempo de ejecución. Cuerpo: <code>{"content":"…","format":"yaml|xml"}</code> (YAML de autoría o Mondrian XML). Los nombres de cubo/esquema se normalizan (MAYÚSCULAS, sin espacios/especiales) y los repetidos reciben sufijo incremental <code>V1</code>/<code>V2</code>/… — nunca hay colisión.</p>
 
 <h4><span class="tag get">GET</span> <code>/saiku/api/cache</code> · <span class="tag post">POST</span> <code>/saiku/api/cache/clear</code> <span class="muted">(admin)</span></h4>
 <p>Métricas del caché (<code>hits</code>, <code>misses</code>, <code>size</code>) y limpieza (rol <code>admin</code>).</p>
