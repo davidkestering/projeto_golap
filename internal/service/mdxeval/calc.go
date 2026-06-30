@@ -270,6 +270,42 @@ func evalBool(exp mdx.Exp, env map[string]float64, reg calcRegistry) bool {
 	return false
 }
 
+// buildNamedSets registra os WITH SET (formulas não-membro) por nome (minúsculo).
+func buildNamedSets(q *mdx.Query) map[string]mdx.Exp {
+	m := map[string]mdx.Exp{}
+	for _, f := range q.Formulas {
+		if !f.IsMember && f.Name != nil && len(f.Name.Segments) >= 1 {
+			m[strings.ToLower(lastSeg(f.Name))] = f.Exp
+		}
+	}
+	return m
+}
+
+// expandSets substitui, no AST, referências a named sets ([NomeDoSet], 1 segmento)
+// pela expressão do set, recursivamente (com limite de profundidade contra ciclos).
+func expandSets(exp mdx.Exp, sets map[string]mdx.Exp, depth int) mdx.Exp {
+	if len(sets) == 0 || depth > 32 {
+		return exp
+	}
+	switch e := exp.(type) {
+	case *mdx.Id:
+		if len(e.Segments) == 1 {
+			if def, ok := sets[strings.ToLower(e.Segments[0].Name)]; ok {
+				return expandSets(def, sets, depth+1)
+			}
+		}
+		return e
+	case *mdx.FunCall:
+		args := make([]mdx.Exp, len(e.Args))
+		for i, a := range e.Args {
+			args[i] = expandSets(a, sets, depth)
+		}
+		return &mdx.FunCall{Name: e.Name, Syntax: e.Syntax, Args: args}
+	default:
+		return exp
+	}
+}
+
 // isSetAggName indica se o nome é uma função de agregação sobre conjunto.
 func isSetAggName(name string) bool {
 	switch strings.ToUpper(name) {

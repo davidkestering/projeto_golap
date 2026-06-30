@@ -46,10 +46,11 @@ func Evaluate(ctx context.Context, cube *metadata.Cube, q *mdx.Query, exec *quer
 		slicerFilters, slicerMeasure = f, m
 	}
 
+	sets := buildNamedSets(q)
 	axes := make([]resolvedAxis, len(q.Axes))
 	measureAxis := -1
 	for i, ax := range q.Axes {
-		ra, err := resolveAxis(ctx, cube, ax.Exp, ax.Ordinal, slicerFilters, exec, reg)
+		ra, err := resolveAxis(ctx, cube, expandSets(ax.Exp, sets, 0), ax.Ordinal, slicerFilters, exec, reg)
 		if err != nil {
 			return nil, fmt.Errorf("eixo %s: %w", mdx.AxisName(ax.Ordinal), err)
 		}
