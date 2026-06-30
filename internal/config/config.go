@@ -28,6 +28,8 @@ type Config struct {
 	AuthSecret string
 	// UsersFile persiste os usuários em JSON; vazio = só em memória.
 	UsersFile string
+	// SchemasDir persiste schemas adicionados em runtime; vazio = só em memória.
+	SchemasDir string
 }
 
 // FromEnv monta a Config a partir do ambiente, aplicando defaults sensatos.
@@ -44,6 +46,7 @@ func FromEnv() Config {
 		AuthEnabled:    getenvBool("CUBODW_AUTH_ENABLED", true),
 		AuthSecret:     os.Getenv("CUBODW_AUTH_SECRET"),
 		UsersFile:      os.Getenv("CUBODW_USERS_FILE"),
+		SchemasDir:     os.Getenv("CUBODW_SCHEMAS_DIR"),
 	}
 }
 

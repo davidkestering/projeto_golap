@@ -39,10 +39,11 @@ type aiCubeDTO struct {
 func (a *aiAPI) handleCubes(w http.ResponseWriter, _ *http.Request) {
 	out := make([]aiCubeDTO, 0, len(a.discover.Cubes()))
 	for _, c := range a.discover.Cubes() {
+		schemaName := a.discover.SchemaOfCube(c.Name)
 		out = append(out, aiCubeDTO{
 			ConnectionName: a.discover.Connection(),
-			Catalog:        a.discover.Catalog(),
-			Schema:         a.discover.SchemaName(),
+			Catalog:        schemaName,
+			Schema:         schemaName,
 			CubeName:       c.Name,
 			CubeCaption:    c.Caption,
 			DefaultMeasure: c.DefaultMeasure,

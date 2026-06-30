@@ -70,6 +70,11 @@ func NewServer(cfg config.Config) (*Server, error) {
 	exec := queryexec.New(pool, cfg.CacheSize)
 	s.exec = exec
 
+	// Carrega schemas adicionados em runtime (persistidos em CUBODW_SCHEMAS_DIR).
+	for _, warn := range loadSchemasDir(s.discover, cfg.SchemasDir) {
+		log.Warn("schema não carregado", "erro", warn)
+	}
+
 	store, err := auth.NewStore(cfg.UsersFile)
 	if err != nil {
 		return nil, err
@@ -90,6 +95,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 	mux.HandleFunc("GET /saiku/api/cache", s.handleCacheStats)
 	mux.HandleFunc("POST /saiku/api/cache/clear", s.handleCacheClear)
 	authA.register(mux)
+	(&schemasAPI{svc: s.discover, dir: cfg.SchemasDir}).register(mux)
 	(&discoverAPI{svc: s.discover}).register(mux)
 	(&queryAPI{discover: s.discover, exec: exec}).register(mux)
 	(&mdxAPI{discover: s.discover, exec: exec}).register(mux)

@@ -20,18 +20,20 @@ func (a *discoverAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc(base+"/dimensions", a.handleDimensions)
 }
 
-// handleConnections devolve a árvore connection → catalog → schema → cubes.
+// handleConnections devolve a árvore connection → catalog → schema → cubes
+// (um catálogo/schema por schema registrado).
 func (a *discoverAPI) handleConnections(w http.ResponseWriter, _ *http.Request) {
-	conn := connectionDTO{
-		Name: a.svc.Connection(),
-		Catalogs: []catalogDTO{{
-			Name: a.svc.Catalog(),
+	var catalogs []catalogDTO
+	for _, sc := range a.svc.Schemas() {
+		catalogs = append(catalogs, catalogDTO{
+			Name: sc.Name,
 			Schemas: []schemaDTO{{
-				Name:  a.svc.SchemaName(),
-				Cubes: a.cubeDTOs(),
+				Name:  sc.Name,
+				Cubes: a.cubeDTOsFor(sc),
 			}},
-		}},
+		})
 	}
+	conn := connectionDTO{Name: a.svc.Connection(), Catalogs: catalogs}
 	writeJSON(w, http.StatusOK, []connectionDTO{conn})
 }
 
@@ -60,13 +62,11 @@ func (a *discoverAPI) handleDimensions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dimensionDTOs(c))
 }
 
-// resolveCube valida connection/catalog/schema e localiza o cubo; responde erro
-// e devolve ok=false quando algo não bate.
+// resolveCube valida a conexão e localiza o cubo pelo nome (em qualquer schema);
+// responde erro e devolve ok=false quando algo não bate.
 func (a *discoverAPI) resolveCube(w http.ResponseWriter, r *http.Request) (*metadata.Cube, bool) {
-	if r.PathValue("connection") != a.svc.Connection() ||
-		r.PathValue("catalog") != a.svc.Catalog() ||
-		r.PathValue("schema") != a.svc.SchemaName() {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection/catalog/schema desconhecido"})
+	if r.PathValue("connection") != a.svc.Connection() {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "conexão desconhecida"})
 		return nil, false
 	}
 	c, found := a.svc.Cube(r.PathValue("cube"))
@@ -81,16 +81,16 @@ func (a *discoverAPI) resolveCube(w http.ResponseWriter, r *http.Request) (*meta
 	return c, true
 }
 
-func (a *discoverAPI) cubeDTOs() []cubeDTO {
-	out := make([]cubeDTO, 0, len(a.svc.Cubes()))
-	for _, c := range a.svc.Cubes() {
+func (a *discoverAPI) cubeDTOsFor(sc *metadata.Schema) []cubeDTO {
+	out := make([]cubeDTO, 0, len(sc.Cubes))
+	for _, c := range sc.Cubes {
 		out = append(out, cubeDTO{
 			Name:       c.Name,
 			UniqueName: metadata.Bracket(c.Name),
 			Caption:    c.Caption,
 			Connection: a.svc.Connection(),
-			Catalog:    a.svc.Catalog(),
-			Schema:     a.svc.SchemaName(),
+			Catalog:    sc.Name,
+			Schema:     sc.Name,
 			Visible:    c.Visible,
 		})
 	}

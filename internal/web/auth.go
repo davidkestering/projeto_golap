@@ -131,5 +131,14 @@ func isPublicPath(path string) bool {
 }
 
 func isAdminOnly(method, path string) bool {
-	return method == http.MethodPost && path == "/saiku/api/cache/clear"
+	switch {
+	case method == http.MethodPost && path == "/saiku/api/cache/clear":
+		return true
+	case method == http.MethodPost && path == "/saiku/api/schemas": // adicionar cubo
+		return true
+	case method == http.MethodDelete && strings.HasPrefix(path, "/saiku/api/schemas/"):
+		return true
+	default:
+		return false
+	}
 }

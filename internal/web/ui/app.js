@@ -597,6 +597,8 @@ function showApp(me) {
     $("#whoami").textContent = me.username + " · " + me.role;
     $("#logout").hidden = false;
   }
+  // Gerenciar cubos é restrito a admin (ou quando a auth está desligada).
+  $("#manage").hidden = !(me && (me.role === "admin" || me.authDisabled));
   loadCubes();
 }
 function showLogin() {
@@ -627,6 +629,69 @@ function switchAuthMode(e) {
 async function logout() {
   await api("/saiku/api/auth/logout", { method: "POST" });
   location.reload();
+}
+
+// ---- gerenciar cubos -------------------------------------------------------
+const SCHEMA_EXAMPLE = `schema: Inventory
+cubes:
+  - name: WarehouseDemo
+    fact: inventory_fact_1997
+    defaultMeasure: Units Shipped
+    measures:
+      - {name: Units Shipped, column: units_shipped, agg: sum}
+      - {name: Warehouse Sales, column: warehouse_sales, agg: sum, format: "#,###.00"}
+    dimensions:
+      - name: Store
+        foreignKey: store_id
+        table: store
+        primaryKey: store_id
+        levels:
+          - {name: Country, column: store_country}
+          - {name: State, column: store_state}
+`;
+
+const postJSON = (obj) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(obj) });
+
+async function openSchemas() {
+  await renderSchemas();
+  $("#schemas-modal").hidden = false;
+}
+async function renderSchemas() {
+  const { ok, body } = await api("/saiku/api/schemas");
+  const list = $("#schemas-list");
+  if (!ok || !Array.isArray(body)) { list.innerHTML = '<div class="empty">erro ao listar</div>'; return; }
+  list.innerHTML = body.map((s) => `
+    <div class="sch">
+      <div class="sch-head"><b>${esc(s.name)}</b>
+        <button class="del" data-schema="${esc(s.name)}">remover</button></div>
+      <div class="cubes">${(s.cubes || []).map((c) => `<span class="cube" title="${c.measures} medidas · ${c.dimensions} dim.">${esc(c.name)}</span>`).join("")}</div>
+    </div>`).join("");
+}
+function schemaStatus(msg, kind) {
+  const el = $("#schema-status");
+  el.textContent = msg;
+  el.className = "schema-status" + (kind ? " " + kind : "");
+}
+async function validateSchema() {
+  const { ok, body } = await api("/saiku/api/schemas/validate", postJSON({ content: $("#schema-text").value }));
+  if (ok && body.valid) {
+    schemaStatus(`válido ✓ — schema "${body.schema.name}": ${(body.schema.cubes || []).map((c) => c.name).join(", ")}`, "ok");
+  } else schemaStatus(body.error || "inválido", "err");
+}
+async function addSchema() {
+  const { ok, body } = await api("/saiku/api/schemas", postJSON({ content: $("#schema-text").value }));
+  if (!ok) { schemaStatus(body.error || "falha ao adicionar", "err"); return; }
+  schemaStatus(`adicionado ✓ — cubos: ${(body.schema.cubes || []).map((c) => c.name).join(", ")}`, "ok");
+  $("#schema-text").value = "";
+  await renderSchemas();
+  await loadCubes();
+}
+async function deleteSchema(name) {
+  if (!confirm(`Remover o schema "${name}" e seus cubos?`)) return;
+  const { ok, body } = await api("/saiku/api/schemas/" + encodeURIComponent(name), { method: "DELETE" });
+  if (!ok) { schemaStatus(body.error || "falha ao remover", "err"); return; }
+  await renderSchemas();
+  await loadCubes();
 }
 
 // ---- boot ------------------------------------------------------------------
@@ -673,5 +738,14 @@ $("#export-csv").addEventListener("click", exportCSV);
 $("#auth-form").addEventListener("submit", doAuth);
 $("#auth-switch").addEventListener("click", switchAuthMode);
 $("#logout").addEventListener("click", logout);
+$("#manage").addEventListener("click", openSchemas);
+$("#schemas-close").addEventListener("click", () => { $("#schemas-modal").hidden = true; });
+$("#schema-validate").addEventListener("click", validateSchema);
+$("#schema-add").addEventListener("click", addSchema);
+$("#schema-example").addEventListener("click", () => { $("#schema-text").value = SCHEMA_EXAMPLE; schemaStatus(""); });
+$("#schemas-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-schema]");
+  if (b) deleteSchema(b.dataset.schema);
+});
 refreshOpenSelect();
 checkAuth();

@@ -19,6 +19,7 @@
   <button id="run" class="primary">▶ Executar</button>
   <button id="save" class="ghost">💾 Salvar</button>
   <select id="open"><option value="">Abrir…</option></select>
+  <button id="manage" class="ghost" hidden>⬢ Cubos</button>
   <span id="status" class="status"></span>
   <span id="whoami" class="whoami"></span>
   <button id="logout" class="ghost" hidden>sair</button>
@@ -102,6 +103,28 @@
   <div class="modal-box">
     <div class="modal-head"><h3>Drill-through · linhas de fato</h3><button id="modal-close" class="ghost">✕ fechar</button></div>
     <div id="modal-body" class="grid-wrap"></div>
+  </div>
+</div>
+
+<div id="schemas-modal" class="modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head"><h3>Gerenciar cubos</h3><button id="schemas-close" class="ghost">✕ fechar</button></div>
+    <div class="schemas-body">
+      <div>
+        <h4>Cubos registrados</h4>
+        <div id="schemas-list" class="schemas-list"></div>
+      </div>
+      <div class="schemas-editor">
+        <h4>Adicionar cubo <small class="muted">(YAML de autoria ou Mondrian XML)</small></h4>
+        <textarea id="schema-text" spellcheck="false" placeholder="schema: MeuSchema&#10;cubes:&#10;  - name: MeuCubo&#10;    fact: minha_tabela_fato&#10;    measures: [...]&#10;    dimensions: [...]"></textarea>
+        <div class="mdx-actions">
+          <button id="schema-add" class="primary">＋ Adicionar</button>
+          <button id="schema-validate" class="ghost">Validar</button>
+          <button id="schema-example" class="ghost">Exemplo</button>
+        </div>
+        <p id="schema-status" class="schema-status"></p>
+      </div>
+    </div>
   </div>
 </div>
 

@@ -105,3 +105,19 @@ td.clickable:hover{background:#1d3354;outline:1px solid var(--accent)}
 .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .modal-head h3{margin:0;font-size:1rem}
 .modal .grid-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px}
+
+.schemas-body{display:grid;grid-template-columns:1fr 1.1fr;gap:18px;overflow:auto}
+.schemas-body h4{margin:.2rem 0 .6rem;font-size:.85rem}
+.schemas-list{display:flex;flex-direction:column;gap:10px}
+.sch{background:var(--soft);border:1px solid var(--border);border-radius:8px;padding:10px}
+.sch-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sch-head b{font-size:.9rem}
+.sch-head .del{color:#ff9090;border-color:#5a2d2d;font-size:.75rem;padding:3px 8px}
+.sch .cubes{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px}
+.sch .cube{font-size:.78rem;color:var(--measure);border:1px solid #2d5a42;border-radius:12px;padding:2px 8px}
+.schemas-editor{display:flex;flex-direction:column;gap:8px}
+#schema-text{width:100%;min-height:240px;resize:vertical;background:#11141d;color:#cfe3ff;
+  border:1px solid var(--border);border-radius:8px;padding:10px;
+  font-family:"JetBrains Mono",Consolas,monospace;font-size:.82rem;line-height:1.5}
+.schema-status{font-size:.82rem;margin:0;min-height:1em}
+.schema-status.ok{color:var(--measure)} .schema-status.err{color:#ff9090}
