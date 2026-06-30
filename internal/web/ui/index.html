@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CuboDW — Analisador de cubos</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <div class="brand">CuboDW <span>· analisador de cubos</span></div>
+  <label>Cubo:
+    <select id="cube"></select>
+  </label>
+  <button id="run" class="primary">▶ Executar</button>
+  <span id="status" class="status"></span>
+</header>
+
+<main>
+  <aside class="fields">
+    <h3>Campos</h3>
+    <div class="group">
+      <h4>Medidas</h4>
+      <ul id="measures" class="chips" data-kind="measure"></ul>
+    </div>
+    <div class="group">
+      <h4>Dimensões</h4>
+      <div id="dimensions"></div>
+    </div>
+  </aside>
+
+  <section class="builder">
+    <div class="zones">
+      <div class="zone" id="zone-rows" data-accept="level">
+        <h4>Linhas <small>(níveis)</small></h4>
+        <ul class="dropchips"></ul>
+      </div>
+      <div class="zone" id="zone-measures" data-accept="measure">
+        <h4>Medidas</h4>
+        <ul class="dropchips"></ul>
+      </div>
+      <div class="zone" id="zone-filters" data-accept="level">
+        <h4>Filtros <small>(nível = membros)</small></h4>
+        <ul class="dropchips"></ul>
+      </div>
+    </div>
+
+    <div class="result">
+      <div class="result-head">
+        <h3>Resultado</h3>
+        <button id="toggle-sql" class="ghost">ver SQL</button>
+      </div>
+      <pre id="sql" class="sql" hidden></pre>
+      <div id="grid" class="grid-wrap"></div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

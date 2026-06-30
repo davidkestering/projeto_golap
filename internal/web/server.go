@@ -79,6 +79,7 @@ func NewServer(cfg config.Config) (*Server, error) {
 	(&queryAPI{discover: s.discover, exec: exec}).register(mux)
 	(&mdxAPI{discover: s.discover, exec: exec}).register(mux)
 	(&aiAPI{discover: s.discover, exec: exec}).register(mux)
+	registerUI(mux)
 
 	s.http = &http.Server{
 		Addr:              cfg.HTTPAddr,

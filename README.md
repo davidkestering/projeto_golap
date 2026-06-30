@@ -157,6 +157,11 @@ indexado por SQL+args — beneficia query JSON, MDX e drill-through. Ligado por
 - `GET /saiku/api/cache` — métricas `{enabled, hits, misses, size, hitRatio}`.
 - `POST /saiku/api/cache/clear` — esvazia. Stats também em `/saiku/api/info`.
 
+**Trilha B — UI Fase 1 (aplicação visual):** SPA leve embutida no binário
+(`go:embed`, sem toolchain Node) servida em **`/ui/`** (`internal/web/ui/`):
+seletor de cubo → **arrastar** dimensões/níveis para Linhas, medidas para Medidas,
+filtros (com membros) → Executar → tabela + SQL gerada. Consome a AI Query API.
+
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.
 
@@ -187,6 +192,7 @@ make up
 curl localhost:8088/health   # {"status":"ok"}
 curl localhost:8088/ready    # {"status":"ready"} quando conectado ao Postgres
 curl localhost:8088/saiku/api/info
+# 👉 UI drag-and-drop:  http://localhost:8088/ui/
 make down
 ```
 
