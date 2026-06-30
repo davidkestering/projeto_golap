@@ -437,6 +437,33 @@ async function openQuery(name) {
   setStatus("consulta aberta: " + name);
 }
 
+// ---- exportar CSV ----------------------------------------------------------
+function exportCSV() {
+  const table = document.querySelector("#grid table");
+  if (!table) { setStatus("nada para exportar", true); return; }
+  const lines = [];
+  table.querySelectorAll("tr").forEach((tr) => {
+    const cells = Array.from(tr.querySelectorAll("th,td")).map((c) => csvCell(c.textContent));
+    lines.push(cells.join(","));
+  });
+  downloadText("﻿" + lines.join("\r\n"), (state.cube || "cubodw") + ".csv", "text/csv");
+  setStatus("CSV exportado");
+}
+function csvCell(s) {
+  s = String(s == null ? "" : s);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function downloadText(text, filename, mime) {
+  const blob = new Blob([text], { type: mime + ";charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 // ---- modo MDX --------------------------------------------------------------
 function setMode(mode) {
   const builder = mode === "builder";
@@ -546,5 +573,6 @@ document.querySelectorAll(".modes .seg").forEach((b) => b.addEventListener("clic
 $("#mdx-run").addEventListener("click", mdxExecute);
 $("#mdx-validate").addEventListener("click", mdxValidate);
 $("#mdx-from-builder").addEventListener("click", () => { $("#mdx-text").value = mdxFromBuilder(); setStatus("MDX gerado do construtor"); });
+$("#export-csv").addEventListener("click", exportCSV);
 refreshOpenSelect();
 loadCubes();
