@@ -52,10 +52,16 @@
     <div class="result">
       <div class="result-head">
         <h3>Resultado</h3>
+        <div class="views">
+          <button class="seg active" data-view="table">Tabela</button>
+          <button class="seg" data-view="bar">Barras</button>
+          <button class="seg" data-view="line">Linhas</button>
+        </div>
         <button id="toggle-sql" class="ghost">ver SQL</button>
       </div>
       <pre id="sql" class="sql" hidden></pre>
       <div id="grid" class="grid-wrap"></div>
+      <canvas id="chart" class="chart" hidden></canvas>
     </div>
   </section>
 </main>

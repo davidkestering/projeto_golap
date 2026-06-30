@@ -6,6 +6,7 @@ const state = {
   zones: { rows: [], cols: [], measures: [], filters: [] },
   samples: {}, // "dim|level" -> [membros de amostra]
   last: null,  // último resultado bruto
+  view: "table", // table | bar | line
 };
 
 // Zonas (id da div -> chave no estado).
@@ -172,9 +173,15 @@ async function run() {
 }
 
 function renderResult(res) {
-  const nCol = state.zones.cols.length;
-  if (nCol === 0) return renderFlat(res);
-  renderPivot(res, state.zones.rows.length, nCol, state.zones.measures.length);
+  const grid = $("#grid"), chart = $("#chart");
+  if (state.view === "table") {
+    chart.hidden = true; grid.hidden = false;
+    if (state.zones.cols.length === 0) renderFlat(res);
+    else renderPivot(res, state.zones.rows.length, state.zones.cols.length, state.zones.measures.length);
+  } else {
+    grid.hidden = true; chart.hidden = false;
+    drawChart(state.view, buildChartData(res));
+  }
 }
 
 // Tabela achatada (sem zona Colunas).
@@ -251,11 +258,121 @@ function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 }
 
+// ---- gráficos (canvas nativo) ---------------------------------------------
+const PALETTE = ["#5aa9ff", "#7ee0a0", "#c8a8ff", "#ffcf6b", "#ff8a8a", "#6be0d3", "#f7a072", "#a0c4ff"];
+
+// Constrói categorias (eixo X = linhas) e séries (sem colunas: 1 por medida;
+// com colunas: colKey × medida) a partir do resultado achatado.
+function buildChartData(res) {
+  const nRow = state.zones.rows.length, nCol = state.zones.cols.length, nMeas = state.zones.measures.length;
+  const rows = res.rows || [];
+  const measNames = state.zones.measures.map((m) => m.name);
+  const SEP = String.fromCharCode(1);
+  const cats = [], catIdx = new Map();
+  const colKeys = [], colSeen = new Set();
+  const vals = new Map();
+  rows.forEach((r) => {
+    const rk = []; for (let i = 0; i < nRow; i++) rk.push(r[i].formatted);
+    const ck = []; for (let i = nRow; i < nRow + nCol; i++) ck.push(r[i].formatted);
+    const rkS = rk.join(SEP) || "Total", ckS = ck.join(SEP);
+    if (!catIdx.has(rkS)) { catIdx.set(rkS, cats.length); cats.push(rkS); }
+    if (!colSeen.has(ckS)) { colSeen.add(ckS); colKeys.push(ck); }
+    for (let m = 0; m < nMeas; m++) vals.set(catIdx.get(rkS) + SEP + ckS + SEP + m, num(r[nRow + nCol + m].value));
+  });
+  const series = [];
+  const push = (name, ckS, m) => series.push({ name, values: cats.map((_, ci) => vals.get(ci + SEP + ckS + SEP + m) || 0) });
+  if (nCol === 0) measNames.forEach((mn, m) => push(mn, "", m));
+  else colKeys.forEach((ck) => measNames.forEach((mn, m) => push(ck.join(" / ") + (nMeas > 1 ? " · " + mn : ""), ck.join(SEP), m)));
+  return { categories: cats.map((c) => c.split(SEP).join(" / ")), series };
+}
+
+function num(v) { const n = typeof v === "number" ? v : parseFloat(v); return isFinite(n) ? n : 0; }
+function niceCeil(x) { const p = Math.pow(10, Math.floor(Math.log10(x))); const f = x / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; }
+function fmtNum(v) { if (v >= 1e6) return (v / 1e6).toFixed(1) + "M"; if (v >= 1e3) return (v / 1e3).toFixed(1) + "k"; return String(Math.round(v * 100) / 100); }
+
+function drawChart(type, data) {
+  const canvas = $("#chart");
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 820, cssH = canvas.clientHeight || 360;
+  canvas.width = cssW * dpr; canvas.height = cssH * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  ctx.font = "11px sans-serif";
+  const { categories, series } = data;
+  if (!categories.length || !series.length) { ctx.fillStyle = "#8b93a7"; ctx.fillText("sem dados", 20, 30); return; }
+
+  const padL = 64, padR = 16, padT = 40, padB = 56;
+  const x0 = padL, x1 = cssW - padR, y1 = cssH - padB, plotW = x1 - x0, plotH = y1 - padT;
+  let max = 0; series.forEach((s) => s.values.forEach((v) => { if (v > max) max = v; }));
+  const niceMax = niceCeil(max || 1);
+
+  // gridlines + eixo Y
+  ctx.strokeStyle = "#2a3040"; ctx.fillStyle = "#8b93a7"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let g = 0; g <= 5; g++) {
+    const y = y1 - plotH * g / 5;
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    ctx.fillText(fmtNum(niceMax * g / 5), x0 - 6, y);
+  }
+  // legenda
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; let lx = padL, ly = 18;
+  series.forEach((s, i) => {
+    ctx.fillStyle = PALETTE[i % PALETTE.length]; ctx.fillRect(lx, ly - 8, 12, 12);
+    ctx.fillStyle = "#dce1ea"; ctx.fillText(s.name, lx + 16, ly);
+    lx += 30 + ctx.measureText(s.name).width; if (lx > x1 - 80) { lx = padL; ly += 16; }
+  });
+  // rótulos X
+  const n = categories.length, slot = plotW / n;
+  ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillStyle = "#8b93a7";
+  categories.forEach((cat, ci) => {
+    let label = cat.length > 14 ? cat.slice(0, 13) + "…" : cat;
+    ctx.fillText(label, x0 + slot * (ci + 0.5), y1 + 6);
+  });
+
+  if (type === "bar") {
+    const groupW = slot * 0.72, bw = groupW / series.length;
+    categories.forEach((_, ci) => {
+      const gx = x0 + slot * ci + (slot - groupW) / 2;
+      series.forEach((s, si) => {
+        const h = (s.values[ci] || 0) / niceMax * plotH;
+        ctx.fillStyle = PALETTE[si % PALETTE.length];
+        ctx.fillRect(gx + bw * si, y1 - h, Math.max(1, bw - 1), h);
+      });
+    });
+  } else {
+    series.forEach((s, si) => {
+      const color = PALETTE[si % PALETTE.length];
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+      s.values.forEach((v, ci) => {
+        const cx = x0 + slot * (ci + 0.5), cy = y1 - (v / niceMax) * plotH;
+        ci === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+      });
+      ctx.stroke();
+      ctx.fillStyle = color;
+      s.values.forEach((v, ci) => {
+        const cx = x0 + slot * (ci + 0.5), cy = y1 - (v / niceMax) * plotH;
+        ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();
+      });
+    });
+  }
+}
+
 // ---- boot ------------------------------------------------------------------
 setupZones();
 $("#cube").addEventListener("change", (e) => loadSchema(e.target.value));
 $("#run").addEventListener("click", run);
 $("#toggle-sql").addEventListener("click", () => {
   const el = $("#sql"); el.hidden = !el.hidden;
+});
+document.querySelectorAll(".seg").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".seg").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.view = btn.dataset.view;
+    if (state.last) renderResult(state.last);
+  });
+});
+window.addEventListener("resize", () => {
+  if (state.last && state.view !== "table") drawChart(state.view, buildChartData(state.last));
 });
 loadCubes();
