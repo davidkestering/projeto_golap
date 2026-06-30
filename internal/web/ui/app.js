@@ -3,9 +3,13 @@
 // Estado da aplicação.
 const state = {
   cube: null,
-  zones: { rows: [], measures: [], filters: [] },
+  zones: { rows: [], cols: [], measures: [], filters: [] },
   samples: {}, // "dim|level" -> [membros de amostra]
+  last: null,  // último resultado bruto
 };
+
+// Zonas (id da div -> chave no estado).
+const ZONES = [["zone-rows", "rows"], ["zone-cols", "cols"], ["zone-measures", "measures"], ["zone-filters", "filters"]];
 
 const $ = (sel) => document.querySelector(sel);
 const api = (path, opts) => fetch(path, opts).then((r) => r.json().then((j) => ({ ok: r.ok, body: j })));
@@ -34,7 +38,7 @@ async function loadCubes() {
 // ---- schema do cubo: campos ------------------------------------------------
 async function loadSchema(cube) {
   state.cube = cube;
-  state.zones = { rows: [], measures: [], filters: [] };
+  state.zones = { rows: [], cols: [], measures: [], filters: [] };
   state.samples = {};
   renderZones();
   setStatus("carregando schema…");
@@ -102,7 +106,7 @@ function setupZones() {
 }
 
 function zoneKey(id) {
-  return { "zone-rows": "rows", "zone-measures": "measures", "zone-filters": "filters" }[id];
+  return { "zone-rows": "rows", "zone-cols": "cols", "zone-measures": "measures", "zone-filters": "filters" }[id];
 }
 
 function addToZone(zoneId, field) {
@@ -123,7 +127,7 @@ function addToZone(zoneId, field) {
 }
 
 function renderZones() {
-  for (const [zoneId, key] of [["zone-rows", "rows"], ["zone-measures", "measures"], ["zone-filters", "filters"]]) {
+  for (const [zoneId, key] of ZONES) {
     const ul = $("#" + zoneId + " .dropchips");
     ul.innerHTML = "";
     state.zones[key].forEach((f, i) => {
@@ -146,10 +150,12 @@ function renderZones() {
 async function run() {
   if (!state.cube) return;
   if (!state.zones.measures.length) return setStatus("arraste ao menos uma medida", true);
+  const rowsLevels = state.zones.rows.map((r) => ({ dimension: r.dimension, level: r.level }));
+  const colsLevels = state.zones.cols.map((c) => ({ dimension: c.dimension, level: c.level }));
   const payload = {
     cube: state.cube,
     measures: state.zones.measures.map((m) => m.name),
-    rows: state.zones.rows.map((r) => ({ dimension: r.dimension, level: r.level })),
+    rows: [...rowsLevels, ...colsLevels], // todos como group-by; o pivot é feito no cliente
     filters: state.zones.filters.map((f) => ({ dimension: f.dimension, level: f.level, members: f.members || [] })),
   };
   setStatus("executando…");
@@ -159,12 +165,20 @@ async function run() {
     body: JSON.stringify(payload),
   });
   if (!ok) { setStatus(body.error || "erro na consulta", true); return; }
+  state.last = body;
   setStatus(`${body.rows.length} linha(s)`);
   $("#sql").textContent = body.sql || "";
-  renderGrid(body);
+  renderResult(body);
 }
 
-function renderGrid(res) {
+function renderResult(res) {
+  const nCol = state.zones.cols.length;
+  if (nCol === 0) return renderFlat(res);
+  renderPivot(res, state.zones.rows.length, nCol, state.zones.measures.length);
+}
+
+// Tabela achatada (sem zona Colunas).
+function renderFlat(res) {
   const cols = res.columns || [];
   const rows = res.rows || [];
   if (!cols.length) { $("#grid").innerHTML = '<div class="empty">sem dados</div>'; return; }
@@ -175,6 +189,58 @@ function renderGrid(res) {
   rows.forEach((row) => {
     html += "<tr>";
     row.forEach((cell, i) => (html += `<td class="${isMeasure[i] ? "measure" : ""}">${esc(cell.formatted)}</td>`));
+    html += "</tr>";
+  });
+  html += "</tbody></table>";
+  $("#grid").innerHTML = html;
+}
+
+// Cross-tab: linhas (nRow níveis) × colunas (nCol níveis) × nMeas medidas.
+// O resultado vem com as colunas na ordem: [níveis-linha…, níveis-coluna…, medidas…].
+function renderPivot(res, nRow, nCol, nMeas) {
+  const cols = res.columns || [];
+  const rows = res.rows || [];
+  const measNames = [];
+  for (let i = nRow + nCol; i < cols.length; i++) measNames.push(cols[i].name);
+
+  const SEP = "";
+  const rowKeys = [], rowSeen = new Set();
+  const colKeys = [], colSeen = new Set();
+  const cell = new Map();
+  rows.forEach((r) => {
+    const rk = []; for (let i = 0; i < nRow; i++) rk.push(r[i].formatted);
+    const ck = []; for (let i = nRow; i < nRow + nCol; i++) ck.push(r[i].formatted);
+    const rkS = rk.join(SEP), ckS = ck.join(SEP);
+    if (!rowSeen.has(rkS)) { rowSeen.add(rkS); rowKeys.push(rk); }
+    if (!colSeen.has(ckS)) { colSeen.add(ckS); colKeys.push(ck); }
+    for (let m = 0; m < nMeas; m++) cell.set(rkS + SEP + ckS + SEP + m, r[nRow + nCol + m].formatted);
+  });
+
+  const rowHead = state.zones.rows.map((r) => r.level);
+  let html = "<table><thead><tr>";
+  rowHead.forEach((n) => (html += `<th rowspan="${nMeas > 1 ? 2 : 1}">${esc(n)}</th>`));
+  colKeys.forEach((ck) => {
+    const label = esc(ck.join(" / "));
+    html += nMeas > 1 ? `<th class="grp" colspan="${nMeas}">${label}</th>` : `<th class="measure">${label}</th>`;
+  });
+  html += "</tr>";
+  if (nMeas > 1) {
+    html += "<tr>";
+    colKeys.forEach(() => measNames.forEach((mn) => (html += `<th class="measure">${esc(mn)}</th>`)));
+    html += "</tr>";
+  }
+  html += "</thead><tbody>";
+  rowKeys.forEach((rk) => {
+    const rkS = rk.join(SEP);
+    html += "<tr>";
+    rk.forEach((v) => (html += `<td>${esc(v)}</td>`));
+    colKeys.forEach((ck) => {
+      const ckS = ck.join(SEP);
+      for (let m = 0; m < nMeas; m++) {
+        const v = cell.get(rkS + SEP + ckS + SEP + m);
+        html += `<td class="measure">${esc(v == null ? "" : v)}</td>`;
+      }
+    });
     html += "</tr>";
   });
   html += "</tbody></table>";

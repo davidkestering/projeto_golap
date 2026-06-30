@@ -41,7 +41,7 @@ ul.chips,ul.dropchips{list-style:none;margin:0;padding:0;display:flex;flex-wrap:
 .chip .x:hover{color:#ff9090}
 
 section.builder{display:flex;flex-direction:column;overflow:hidden}
-.zones{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:14px}
+.zones{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;padding:14px}
 .zone{background:var(--panel);border:1px dashed var(--border);border-radius:10px;
   padding:10px;min-height:84px}
 .zone.over{border-color:var(--accent);background:#172132}
@@ -58,6 +58,7 @@ section.builder{display:flex;flex-direction:column;overflow:hidden}
 table{border-collapse:collapse;width:100%;font-size:.85rem}
 th,td{border-bottom:1px solid var(--border);padding:6px 12px;text-align:left;white-space:nowrap}
 th{background:var(--soft);position:sticky;top:0;color:#eef2f8}
+th.grp{text-align:center;border-bottom:1px solid var(--accent)}
 td.measure,th.measure{text-align:right;font-variant-numeric:tabular-nums}
 tr:hover td{background:rgba(255,255,255,.025)}
 .empty{color:var(--muted);padding:24px;text-align:center}
