@@ -104,7 +104,8 @@
 <h2 id="execucao">3. Instalação e execução</h2>
 <p>Só é necessário <strong>Docker</strong> + <strong>Docker Compose</strong> no host. Go e Java não são necessários: o build do Go roda em container.</p>
 <h4>Subir a stack</h4>
-<pre><code>make up            # docker compose: engine + postgres:16 (FoodMart auto-carregado)
+<pre><code>git clone https://github.com/davidkestering/projeto_golap.git &amp;&amp; cd projeto_golap
+make up            # docker compose: engine + postgres:16 (FoodMart auto-carregado)
 curl localhost:8088/health        # {"status":"ok"}
 curl localhost:8088/ready         # {"status":"ready"}  (conectado ao Postgres)
 # 👉 UI drag-and-drop:  http://localhost:8088/ui/   (login demo: admin / admin)
@@ -519,7 +520,11 @@ cubes:
         levels:
           - {name: Year, column: the_year, type: Numeric, levelType: TimeYears}
           - {name: Quarter, column: quarter, levelType: TimeQuarters}</code></pre>
-<p>Carregue qualquer um via <code>CUBODW_SCHEMA=/caminho/arquivo.xml</code> (ou <code>.yml</code>).</p>
+<p>Carregue um schema fixo no boot via <code>CUBODW_SCHEMA=/caminho/arquivo.xml</code>
+(ou <code>.yml</code>), <strong>ou adicione cubos em tempo de execução</strong> pela UI
+(botão <strong>⬢ Cubos</strong>, admin) / API <code>POST /saiku/api/schemas</code> — ver
+seções <a href="#api">8</a> e <a href="#ui">10</a>. Para persistir os adicionados entre
+reinícios, defina <code>CUBODW_SCHEMAS_DIR</code>.</p>
 
 <!-- ========================================================= -->
 <h2 id="limitacoes">14. Limitações (ainda não suportado)</h2>

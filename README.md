@@ -1,280 +1,245 @@
 # CuboDW
 
-Motor OLAP (estilo **Mondrian**) escrito em **Go**, mais — em fase posterior — uma
-aplicação visual de cubos com drag-and-drop (estilo **Saiku**). Implantação em
-**microserviços Docker**.
+Motor **OLAP** (estilo **Mondrian**) em **Go** com uma **aplicação visual de cubos**
+drag-and-drop (estilo **Saiku**): você descreve cubos sobre um banco relacional e
+consulta por **arrastar-e-soltar**, **MDX** ou **API REST**. Sobe inteiro em
+**Docker** — só `docker compose`, sem instalar Go ou Java.
 
-Autor: **David Kestering** · Licença: Apache-2.0
+Autor: **David Kestering** · Licença: **Apache-2.0**
 
-> Plano completo e roteiro por fases: `~/.claude/plans/quero-sua-ajuda-eu-bubbly-sonnet.md`.
+---
 
-## 📖 Manual técnico
+## 🚀 Subir em 1 minuto (a partir de um clone)
 
-Manual HTML detalhado de todos os módulos, API REST e cobertura MDX, em 3 idiomas
-(abra no navegador):
-
-- [`DOCS/index.html`](DOCS/index.html) — seletor de idioma
-- 🇧🇷 [`DOCS/manual.pt-br.html`](DOCS/manual.pt-br.html) · 🇬🇧 [`DOCS/manual.en.html`](DOCS/manual.en.html) · 🇪🇸 [`DOCS/manual.es.html`](DOCS/manual.es.html)
-
-## Estado atual — Fases 0–8 (+ Fase 9 em progresso)
-
-**Fase 0 (infra):**
-- `cmd/cubodw` — CLI (cobra): `serve-engine`, `healthcheck`, `version`.
-- `internal/web` — servidor HTTP: `/health`, `/ready` (pinga Postgres), `/saiku/api/info`.
-- `deploy/` — Dockerfile multi-stage + `docker-compose.yml` (engine + `postgres:16`
-  com FoodMart auto-carregado via `initdb`).
-
-**Fase 1 (metadados + descoberta):**
-- `internal/engine/metadata` — IR (Schema/Cube/Dimension/Hierarchy/Level/Measure)
-  com nomes únicos MDX.
-- `internal/engine/schema/mondrian` — import de **Mondrian XML v3** → IR
-  (resolve `DimensionUsage`, dimensões inline, `MeasureExpression`).
-- `internal/engine/schema/yaml` — loader do formato de **autoria YAML** → IR.
-- `internal/demo` — schema **FoodMart** embutido (cubo padrão).
-- `internal/service/discover` + `internal/web/discover.go` — **API de descoberta**.
-
-Endpoints de descoberta (shape compatível com Saiku):
-
-```
-GET /saiku/api/discover                                                 # árvore connection→catalog→schema→cubes
-GET /saiku/api/discover/{conn}/{catalog}/{schema}/{cube}/metadata       # dimensões+hierarquias+níveis e medidas
-GET /saiku/api/discover/{conn}/{catalog}/{schema}/{cube}/dimensions     # só dimensões
-```
-
-**Fase 2 (star schema + SQL):**
-- `internal/engine/query` — spec de query (medidas, níveis em linhas/colunas, filtros) + Result tipado.
-- `internal/engine/sql` — dialeto Postgres + gerador de `SELECT/JOIN/WHERE/GROUP BY`
-  (resolve star schema por FK=PK; erro claro p/ snowflake).
-- `internal/service/queryexec` — executa a SQL no Postgres e materializa records tipados.
-
-Endpoints de query:
-
-```
-POST /saiku/api/query           # executa: {cube, rows[], columns[], measures[], filters[]} -> records
-POST /saiku/api/query/preview   # valida + gera SQL sem executar
-```
-
-Exemplo (números canônicos do FoodMart):
+**Pré-requisitos:** apenas **Docker** + **Docker Compose**. (Go e Java **não**
+precisam — o build do Go roda dentro de um container.)
 
 ```sh
-curl -s -X POST localhost:8088/saiku/api/query -H 'Content-Type: application/json' -d '{
-  "cube":"Sales",
-  "rows":[{"dimension":"Time","level":"Year"}],
-  "measures":["Unit Sales","Store Sales"]
-}'
-# 1997 -> Unit Sales 266773, Store Sales 565238.13
-```
-
-**Fase 3 (parser MDX):**
-- `internal/engine/mdx` — lexer + AST + parser recursivo-descendente, fiel ao
-  `MdxParser.jj` do Mondrian (precedência de operadores, `WITH MEMBER/SET`, eixos
-  `NON EMPTY ... ON COLUMNS/ROWS/AXIS(n)`, sets `{}`, tuplas `()`, funções/métodos,
-  `.props`, `CASE`, membros compostos como `[Measures].[Unit Sales]`).
-- `POST /saiku/api/mdx/parse` — `{mdx}` → AST (eixos, slicer, fórmulas, forma canônica).
-
-**Fase 4 (avaliador MDX → CellSet):**
-- `internal/service/mdxeval` — reduz o AST MDX ao modelo de query da Fase 2
-  (níveis + medidas + filtros), executa e **pivota** os records num CellSet.
-  Suporta: medidas em eixo ou medida default (slicer/cubo), `{membros}`,
-  `[Dim].[Nível].Members`, `[membro].Children`, `CrossJoin`, tuplas e `WHERE`.
-- `POST /saiku/api/mdx/execute` — `{mdx}` → CellSet (eixos, células e `grid` 2D).
-
-Exemplo:
-
-```sh
-curl -s -X POST localhost:8088/saiku/api/mdx/execute -H 'Content-Type: application/json' -d '{
-  "mdx":"SELECT {[Measures].[Unit Sales],[Measures].[Store Sales]} ON COLUMNS, [Store].[Store Country].Members ON ROWS FROM [Sales]"
-}'
-# USA -> 266773 | 565238.13
-```
-
-**Fase 5 (funções de conjunto + membros calculados):**
-- `internal/service/mdxeval` refatorado para **resolver as posições de cada eixo
-  independentemente** (no contexto do slicer), suportando `Order`,
-  `TopCount`/`BottomCount` e `Filter` (ordenação/limite/filtro por medida).
-- `internal/service/mdxeval/calc.go` — **membros calculados** (`WITH MEMBER`):
-  avaliador numérico/booleano sobre medidas (ex.: `Profit AS [Store Sales] - [Store Cost]`,
-  `Filter(set, [Unit Sales] > 1000)`), computado em Go sobre as medidas-base.
-
-Exemplo:
-
-```sh
-curl -s -X POST localhost:8088/saiku/api/mdx/execute -H 'Content-Type: application/json' -d '{
-  "mdx":"WITH MEMBER [Measures].[Profit] AS [Measures].[Store Sales] - [Measures].[Store Cost] SELECT {[Measures].[Profit]} ON COLUMNS, TopCount([Store].[Store State].Members,2,[Measures].[Unit Sales]) ON ROWS FROM [Sales]"
-}'
-```
-
-**Fase 6 (mais funções MDX):**
-- Operações de conjunto, **componíveis** (`resolveMemberSet` recursivo): `Union`,
-  `Except`, `Intersect`, `Head`, `Tail`, `Distinct`, `Hierarchize`
-  (ex.: `Head(Order([Store].[Store State].Members,[Unit Sales],BDESC), 2)`).
-- Funções escalares em membros calculados: `IIf(cond, x, y)`, `CoalesceEmpty(...)`.
-
-**Fase 7 (agregação sobre conjuntos + NON EMPTY):**
-- **`Sum`/`Avg`/`Count`/`Aggregate` sobre conjuntos** em membros calculados —
-  habilita **% do total / participação** (ex.: `[Pct] AS [Unit Sales] /
-  Sum([Store].[Store State].Members, [Unit Sales]) * 100`). O subtotal é
-  pré-computado no **contexto correto** (agrupado pelas demais dimensões do grid).
-- **`NON EMPTY`** honrado: poda posições cujas células são todas vazias.
-
-**Fase 8 (mostrar todos os membros vs NON EMPTY):**
-- Enumeração de membros via **tabela de dimensão** (`sql.BuildLevelMembers`:
-  `SELECT DISTINCT` com filtros de ancestrais/restrição), não pelo fato. Assim
-  `[Dim].[Nível].Members` mostra **todos** os membros (inclusive sem fatos →
-  células vazias) e `NON EMPTY` poda os vazios.
-
-Agregações sobre conjuntos em calc: `Sum`/`Avg`/`Count`/`Aggregate` e também
-**`Min`/`Max`** (estes via agregação por membro + redução em Go).
-
-Também suportados: **named sets** (`WITH SET`), **ranges** (`m1 : m2`),
-**múltiplas hierarquias** por dimensão (ex.: `[Time].[Weekly].[Week]`) e
-**parent-child** plano (ex.: `[Employees].[Employee Id].Members` exibido por nome).
-
-**Múltiplos dialetos SQL** (`internal/engine/sql/dialect.go`): a geração de SQL é
-dirigida por um `Dialect` (quoting, placeholders, casts, `IN`, `LIMIT`/`TOP`/`FETCH`,
-alias com/sem `AS`). Implementados e testados (golden): **PostgreSQL, MySQL/MariaDB,
-DuckDB, SQL Server e Oracle** (`DialectByName` resolve por nome).
-> Observação: o runtime executa via **pgx (PostgreSQL)**. Apontar para MySQL/DuckDB/
-> SQL Server requer plugar o driver respectivo + carregar o FoodMart nesse banco
-> (passo de deploy); a camada de geração de SQL já está pronta para eles.
-
-Ainda **não** suportados (erro claro): mostrar todos os membros em `CrossJoin`
-(multi-binding via fato), snowflake, navegação de árvore/rollup recursivo em
-parent-child.
-
-**Fase 9.1 (AI Query API):** surface tipada para agentes/LLMs consultarem cubos
-**sem MDX** (`internal/web/ai.go`):
-
-```
-GET  /saiku/api/ai/cubes               # cubos + defaultMeasure + measureCount
-GET  /saiku/api/ai/schema/{cube}       # auto-descritivo: medidas, dims, níveis com
-                                       #   membros de amostra REAIS + exemplo de request
-POST /saiku/api/ai/query               # {cube, measures, rows, columns, filters} (sem MDX)
-```
-
-Validação com auto-correção: nome inválido devolve `{status, field, value, available:[…]}`.
-
-**Fase 9.2 (drill-through + totais):**
-- `POST /saiku/api/query/drillthrough` — `{cube, filters, maxrows}` → linhas de fato
-  cruas por trás de um contexto (`sql.BuildDrillthrough`).
-- `POST /saiku/api/query` com `"totals":true` → acrescenta uma linha de total geral.
-
-**Fase 9.3 (inteligência de tempo):** navegação sobre membros ordenados de um nível
-(`internal/service/mdxeval/time.go`):
-- `[m].PrevMember` / `[m].NextMember`, `[m].Lag(n)` / `[m].Lead(n)` — membro deslocado.
-- `YTD([Time].[1997].[Q3])` — do início do ciclo até o membro (acumulado no ano).
-  Ex.: `Lead(1)` de Q3 → Q4; `YTD(Q3)` → Q1, Q2, Q3.
-
-**Fase 9.4 (cache de resultados):** cache em memória (FIFO) no nível do `queryexec.Run`,
-indexado por SQL+args — beneficia query JSON, MDX e drill-through. Ligado por
-`CUBODW_CACHE_SIZE` (default 256; 0 desabilita).
-- `GET /saiku/api/cache` — métricas `{enabled, hits, misses, size, hitRatio}`.
-- `POST /saiku/api/cache/clear` — esvazia. Stats também em `/saiku/api/info`.
-
-**Trilha B — aplicação visual (UI Fases 1–5):** SPA leve embutida no binário
-(`go:embed`, **sem toolchain Node**) servida em **`/ui/`** (`internal/web/ui/`):
-- **Construtor drag-and-drop:** seletor de cubo → arrastar dimensões/níveis para
-  Linhas/Colunas, medidas para Medidas, filtros (com membros) → Executar.
-- **Cross-tab** (pivot linhas × colunas × medidas, no cliente).
-- **Gráficos** de barras e linhas (canvas nativo, sem libs).
-- **Drill-through**: clique numa célula → linhas de fato cruas num modal.
-- **Salvar/abrir consultas** (localStorage).
-- **Editor MDX**: escrever, **Validar** (`/mdx/parse`) e **Executar**
-  (`/mdx/execute`), além de **gerar MDX a partir do construtor**.
-- **Formatação de medidas** (formatString do schema), **exportar CSV**,
-  **ordenar** clicando no cabeçalho e **paginação** (tabela achatada).
-
-**Autenticação + papéis** (`internal/auth`, `internal/web/auth.go`): ligada por
-padrão. Sessão por **cookie assinado (HMAC)**, senhas em **bcrypt**, papéis
-**admin/user**, admin semeado (**admin/admin**).
-- `POST /saiku/api/auth/register` — **registro aberto** (cria usuário `user`)
-- `POST /saiku/api/auth/login` · `POST /saiku/api/auth/logout` · `GET /saiku/api/auth/me`
-- Middleware protege `/saiku/api/*` (públicos: `/health`, `/ready`, `/saiku/api/info`,
-  `/saiku/api/auth/*`, `/ui/*`); ações admin-only (ex.: `cache/clear`) exigem `admin`.
-- Env: `CUBODW_AUTH_ENABLED` (default `true`), `CUBODW_AUTH_SECRET` (assinatura;
-  defina em produção), `CUBODW_USERS_FILE` (persiste usuários em JSON; vazio = memória).
-
-Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
-vazio usa o FoodMart embutido.
-
-**Gerenciador de cubos** (`internal/web/schemas.go`, `discover` multi-schema): cria e
-**registra cubos em tempo de execução** — na UI (botão **⬢ Cubos**, só admin) ou via API:
-- `GET /saiku/api/schemas` (listar) · `POST /saiku/api/schemas/validate` (dry-run)
-- `POST /saiku/api/schemas` (adicionar — admin) · `DELETE /saiku/api/schemas/{name}` (admin)
-- aceita **YAML de autoria** ou **Mondrian XML**; rejeita colisão de nome de cubo/schema (409).
-- `CUBODW_SCHEMAS_DIR`: dir gravável para **persistir** os cubos adicionados (vazio = só memória).
-
-> Engine exposto em **localhost:8088** (host 8088 → container 8080, para não
-> conflitar com a porta 8080 já usada no host). Postgres em localhost:5432
-> (user/pass `cubodw`, db `foodmart`).
-
-Próximas fases (`internal/engine/...`: star/SQL, MDX parser, calc/avaliador,
-cache, result) — ver o plano.
-
-## Pré-requisitos
-
-Apenas **Docker** + **Docker Compose** no host. Go e Java **não** são necessários
-(build do Go roda em container; o Saiku Java de referência roda via imagem Docker).
-
-## Como rodar
-
-```sh
-# resolver dependências (gera go.sum)
-make tidy
-
-# compilar e testar (em container golang)
-make build
-make test
-
-# subir a stack: engine + postgres:16 (FoodMart é auto-carregado no 1o boot)
+git clone https://github.com/davidkestering/projeto_golap.git
+cd projeto_golap
 make up
-curl localhost:8088/health   # {"status":"ok"}
-curl localhost:8088/ready    # {"status":"ready"} quando conectado ao Postgres
-curl localhost:8088/saiku/api/info
-# 👉 UI drag-and-drop:  http://localhost:8088/ui/  (login demo: admin / admin)
-make down
 ```
 
-## Referência (engenharia reversa)
+O `make up` compila o engine e sobe a stack: **engine** + **PostgreSQL 16** com o
+cubo de demonstração **FoodMart** carregado automaticamente no primeiro boot
+(pode levar ~1 min na primeira vez). Quando terminar:
 
-- `reference/mondrian/` — clone do fork Mondrian (Spicule), só leitura, fora do build.
-- `saiku-4.5.2.zip` — fonte de engenharia reversa da camada Saiku (REST/AI/semântica).
+| O quê | Onde |
+|---|---|
+| 🖥️ **Interface visual** | **http://localhost:8088/ui/** — login demo **`admin` / `admin`** |
+| ❤️ Saúde / prontidão | `curl localhost:8088/health` · `curl localhost:8088/ready` |
+| ℹ️ Info do serviço | `curl localhost:8088/saiku/api/info` |
+| 📖 Manual técnico | abra [`DOCS/index.html`](DOCS/index.html) no navegador |
 
-## Layout
+Para derrubar: `make down`. (Sem `make` no host? Use
+`docker compose -f deploy/docker-compose.yml up --build -d`.)
+
+> O engine fica em **localhost:8088** (host 8088 → container 8080). O PostgreSQL
+> fica em **localhost:5432** (user/senha `cubodw`, banco `foodmart`).
+
+---
+
+## 🧭 Por onde começar a usar e testar
+
+### 1) Pela interface visual (recomendado)
+
+1. Abra **http://localhost:8088/ui/** e faça login com **`admin` / `admin`**
+   (ou clique em **Registrar** para criar uma conta comum).
+2. No modo **Construtor**: escolha o **Cubo** (ex.: `Sales`) no topo.
+3. **Arraste** medidas (verdes) e níveis (roxos) da barra esquerda para as zonas
+   **Linhas / Colunas / Medidas / Filtros** e clique **▶ Executar**.
+4. Explore: alterne **Tabela / Barras / Linhas**, clique numa célula de medida
+   para o **drill-through**, use **ver SQL**, **⬇ CSV**, ordenar pelo cabeçalho,
+   **💾 Salvar** consultas. O modo **MDX** deixa escrever/validar/executar MDX.
+
+### 2) Pela API REST (terminal)
+
+Com a autenticação ligada (padrão), faça login uma vez e reúse o cookie:
+
+```sh
+# 1) login -> guarda o cookie de sessão
+curl -c cookies.txt -X POST localhost:8088/saiku/api/auth/login \
+  -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin"}'
+
+# 2) consulta tabular (modelo JSON, sem MDX)
+curl -b cookies.txt -X POST localhost:8088/saiku/api/query \
+  -H 'Content-Type: application/json' -d '{
+    "cube":"Sales",
+    "rows":[{"dimension":"Store","level":"Store State"}],
+    "measures":["Unit Sales","Store Sales"]
+  }'
+
+# 3) ou MDX direto
+curl -b cookies.txt -X POST localhost:8088/saiku/api/mdx/execute \
+  -H 'Content-Type: application/json' -d '{
+    "mdx":"SELECT {[Measures].[Unit Sales]} ON COLUMNS, [Store].[Store Country].Members ON ROWS FROM [Sales]"
+  }'
+```
+
+Descobrir o que existe: `curl -b cookies.txt localhost:8088/saiku/api/discover`
+(cubos) e `.../{conn}/{catalog}/{schema}/{cube}/metadata` (dimensões e medidas).
+Há ainda a **AI Query API** (`/saiku/api/ai/cubes`, `/ai/schema/{cube}`,
+`POST /ai/query`) — schema auto-descritivo e validação tipada, pensada para LLMs.
+
+---
+
+## 🧊 Criar e adicionar cubos novos
+
+Você pode **criar um cubo e usá-lo na hora**, sem reiniciar o engine. Um cubo é
+descrito por um *schema* em **YAML de autoria** (enxuto) ou **Mondrian XML**, que
+liga dimensões/níveis/medidas a tabelas e colunas do seu banco.
+
+### Pela interface (mais fácil)
+
+1. Logado como **admin**, clique em **⬢ Cubos** no topo.
+2. No modal, clique **Exemplo** (preenche um YAML pronto), ajuste, e use
+   **Validar** (confere sem aplicar) → **Adicionar**.
+3. O cubo novo aparece no seletor **Cubo** — selecione e monte sua consulta.
+
+### Pela API
+
+```sh
+# valida sem aplicar (dry-run)
+curl -b cookies.txt -X POST localhost:8088/saiku/api/schemas/validate \
+  -H 'Content-Type: application/json' -d '{"content":"<seu YAML aqui>"}'
+
+# adiciona (papel admin)
+curl -b cookies.txt -X POST localhost:8088/saiku/api/schemas \
+  -H 'Content-Type: application/json' -d '{"content":"<seu YAML aqui>"}'
+
+curl -b cookies.txt localhost:8088/saiku/api/schemas                 # listar
+curl -b cookies.txt -X DELETE localhost:8088/saiku/api/schemas/Inventory   # remover (admin)
+```
+
+### Formato YAML de um cubo
+
+```yaml
+schema: Inventory                  # nome do schema (grupo de cubos)
+cubes:
+  - name: WarehouseDemo            # nome do cubo (único no catálogo)
+    fact: inventory_fact_1997      # tabela fato
+    defaultMeasure: Units Shipped
+    measures:
+      - {name: Units Shipped,  column: units_shipped,  agg: sum}
+      - {name: Warehouse Sales, column: warehouse_sales, agg: sum, format: "#,###.00"}
+    dimensions:
+      - name: Store
+        foreignKey: store_id       # FK na fato
+        table: store               # tabela de dimensão
+        primaryKey: store_id       # PK na dimensão
+        levels:
+          - {name: Country, column: store_country}
+          - {name: State,   column: store_state}
+```
+
+- As **tabelas/colunas referenciadas precisam existir no banco** conectado
+  (acima usamos tabelas reais do FoodMart). Para apontar para o **seu** banco,
+  ajuste o DSN em `CUBODW_PG_DSN` (ver Configuração).
+- Nomes de cubo/schema **não podem colidir** com os já registrados (erro `409`).
+- Também é aceito **Mondrian XML** (`{"content":"<Schema …>", "format":"xml"}`).
+- O **formato completo** (XML e YAML, com hierarquias, tempo, parent-child) está
+  no manual, seção *Formatos de schema*.
+
+> **Persistência:** cubos adicionados em runtime valem para a sessão. Para que
+> sobrevivam a um restart, defina `CUBODW_SCHEMAS_DIR` apontando para um diretório
+> gravável (montado como volume) — o engine recarrega os schemas de lá na subida.
+> Alternativa: aponte `CUBODW_SCHEMA` para um arquivo de schema fixo no boot.
+
+---
+
+## ⚙️ Configuração (variáveis de ambiente)
+
+| Variável | Default | Descrição |
+|---|---|---|
+| `CUBODW_HTTP_ADDR` | `:8080` | Endereço HTTP (dentro do container) |
+| `CUBODW_PG_DSN` | (no compose) | DSN do PostgreSQL. Vazio → `/ready` reporta `no-db` |
+| `CUBODW_SCHEMA` | — | Schema fixo no boot (`.xml` Mondrian \| `.yml/.yaml` YAML). Vazio → FoodMart embutido |
+| `CUBODW_SCHEMAS_DIR` | — | Dir gravável para **persistir** cubos adicionados em runtime |
+| `CUBODW_CACHE_SIZE` | `256` | Nº de resultados em cache (FIFO). `0` desabilita |
+| `CUBODW_AUTH_ENABLED` | `true` | Liga a autenticação + middleware de proteção |
+| `CUBODW_AUTH_SECRET` | (dev) | Segredo HMAC que assina os cookies. **Defina em produção** |
+| `CUBODW_USERS_FILE` | — | Persiste usuários em JSON (vazio = só memória) |
+| `CUBODW_CONNECTION` | `foodmart` | Nome lógico da conexão na descoberta |
+
+No `make up`, o `CUBODW_PG_DSN` já vem configurado no `deploy/docker-compose.yml`
+apontando para o Postgres da stack — não precisa fazer nada para o demo funcionar.
+
+---
+
+## ✨ O que já está pronto
+
+- **Motor OLAP/MDX** fiel ao Mondrian: parser MDX, avaliador → *CellSet*, geração
+  de SQL sobre *star schema*. MDX coberto: `Members`/`Children`, `CrossJoin`,
+  tuplas, `Order`/`TopCount`/`BottomCount`/`Filter`, `Union`/`Except`/`Intersect`/
+  `Head`/`Tail`/`Distinct`/`Hierarchize`, **membros calculados** (`WITH MEMBER`),
+  **named sets** (`WITH SET`), **ranges** (`m1 : m2`), `Sum/Avg/Count/Min/Max/
+  Aggregate` sobre conjuntos (% do total), **inteligência de tempo**
+  (`PrevMember`/`NextMember`/`Lag`/`Lead`/`YTD`), **múltiplas hierarquias**,
+  **parent-child** (lista por nome), `NON EMPTY`, formatação de medidas.
+- **API REST** compatível com Saiku: descoberta, query JSON, MDX (parse/execute),
+  drill-through + totais, **AI Query API**, cache.
+- **5 dialetos SQL** na geração: PostgreSQL (runtime), MySQL/MariaDB, DuckDB,
+  SQL Server, Oracle (testados por *golden tests*).
+- **UI visual** (`/ui/`): construtor drag-and-drop, cross-tab, gráficos,
+  drill-through, editor MDX, CSV, ordenação/paginação, salvar/abrir.
+- **Autenticação + papéis** (admin/user), registro aberto, sessão por cookie HMAC.
+- **Gerenciador de cubos**: criar/registrar/remover cubos em runtime.
+
+**Ainda não** (erro claro): mostrar todos os membros em `CrossJoin` multi-binding,
+*snowflake* (`<Join>`), navegação de árvore/rollup recursivo em parent-child, e
+execução de runtime fora do PostgreSQL (os outros dialetos só geram a SQL).
+
+Detalhes completos de cada módulo, da API e do MDX estão no **manual**:
+[`DOCS/index.html`](DOCS/index.html) (🇧🇷 PT-BR · 🇬🇧 EN · 🇪🇸 ES).
+
+---
+
+## 🛠️ Desenvolvimento
+
+```sh
+make tidy     # go mod tidy (gera go.sum) — em container golang
+make vet      # go vet
+make test     # go test ./...
+make build    # compila tudo
+make up       # sobe a stack (engine + postgres:16)
+make logs     # segue os logs · make ps (status) · make down (derruba)
+```
+
+Tudo roda em containers — não é preciso ter Go instalado no host.
+
+## 🗂️ Layout
 
 ```
-cmd/cubodw/        CLI
+cmd/cubodw/              CLI (cobra): serve-engine | healthcheck | version
 internal/
-  config/          configuração via env
-  version/         versão
-  web/             servidor HTTP + DTOs/handlers de descoberta
-  demo/            schema FoodMart embutido (cubo padrão)
+  config/                configuração via env
+  auth/                  store de usuários (bcrypt) + tokens de sessão (HMAC)
+  demo/                  schema FoodMart embutido (cubo padrão)
   engine/
-    metadata/      IR multidimensional
-    schema/mondrian/  import Mondrian XML v3 -> IR
-    schema/yaml/      autoria YAML -> IR
-    query/            spec de query + Result tipado
-    sql/              dialeto Postgres + gerador de SQL (star schema)
-    mdx/              lexer + AST + parser MDX
-    (próximas fases: Filter/Order/TopCount, WITH, aggcache, Arrow)
+    metadata/            IR multidimensional
+    schema/mondrian/     import Mondrian XML v3 -> IR
+    schema/yaml/         autoria YAML -> IR
+    query/               spec de query + Result tipado + formatação
+    sql/                 geração de SQL + 5 dialetos (dialect.go)
+    mdx/                 lexer + AST + parser MDX
   service/
-    discover/         descoberta de metadados
-    queryexec/        execução de query no Postgres
-    mdxeval/          avaliador MDX -> CellSet (Order/TopCount/Filter, set ops, WITH MEMBER)
+    discover/            descoberta de metadados (multi-schema)
+    queryexec/           execução no Postgres + cache + drill-through
+    mdxeval/             avaliador MDX -> CellSet (set ops, WITH, tempo, …)
+  web/                   servidor HTTP, auth, schemas, API REST + UI embutida (ui/)
 deploy/
-  engine/Dockerfile
-  docker-compose.yml
-  postgres/convert_h2_to_pg.sh + initdb/  seed FoodMart
-reference/mondrian/  spec de leitura do Mondrian
+  engine/Dockerfile      build multi-stage (distroless)
+  docker-compose.yml     engine + postgres:16
+  postgres/initdb/       seed do FoodMart
+DOCS/                    manual técnico (PT-BR / EN / ES)
 ```
 
-## Licença
+## 📜 Licença
 
-O código do CuboDW é licenciado sob a **Apache License 2.0** — veja
-[`LICENSE`](LICENSE). Você pode usar, modificar e comercializar, **mantendo o
-crédito ao autor e ao projeto** (avisos de copyright + [`NOTICE`](NOTICE)).
+Código sob **Apache License 2.0** — veja [`LICENSE`](LICENSE). Você pode usar,
+modificar e comercializar, **mantendo o crédito ao autor e ao projeto** (avisos de
+copyright + [`NOTICE`](NOTICE)).
 
-Os dados/schema de demonstração **FoodMart** (`internal/demo/FoodMart.xml` e
-`deploy/postgres/initdb/10-foodmart.sql.gz`) vêm do Mondrian e permanecem sob
-**Eclipse Public License v1.0 (EPL-1.0)** — não são cobertos pela Apache-2.0.
-Detalhes em [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+Os dados/schema de demonstração **FoodMart** vêm do Mondrian e permanecem sob
+**Eclipse Public License v1.0 (EPL-1.0)** — não cobertos pela Apache-2.0. Detalhes
+em [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
