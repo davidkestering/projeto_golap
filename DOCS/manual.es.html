@@ -16,7 +16,7 @@
     <a class="active" href="manual.es.html">ES</a>
   </div>
   <ol>
-    <li><a href="#vision-general">1. Visión general</a></li>
+    <li><a href="#vision">1. Visión general</a></li>
     <li><a href="#arquitectura">2. Arquitectura</a></li>
     <li><a href="#ejecucion">3. Instalación y ejecución</a></li>
     <li><a href="#conceptos">4. Conceptos OLAP</a></li>
@@ -26,7 +26,7 @@
         <li><a href="#m-mondrian">5.2 schema/mondrian</a></li>
         <li><a href="#m-yaml">5.3 schema/yaml</a></li>
         <li><a href="#m-query">5.4 query</a></li>
-        <li><a href="#m-sql">5.5 sql</a></li>
+        <li><a href="#m-sql">5.5 sql + dialectos</a></li>
         <li><a href="#m-mdx">5.6 mdx</a></li>
         <li><a href="#m-demo">5.7 demo</a></li>
       </ol>
@@ -36,71 +36,83 @@
         <li><a href="#s-discover">6.1 discover</a></li>
         <li><a href="#s-queryexec">6.2 queryexec</a></li>
         <li><a href="#s-mdxeval">6.3 mdxeval</a></li>
+        <li><a href="#s-auth">6.4 auth</a></li>
       </ol>
     </li>
-    <li><a href="#api">7. API REST</a></li>
-    <li><a href="#mdx">8. Cobertura MDX</a></li>
-    <li><a href="#ejemplos">9. Ejemplos de extremo a extremo</a></li>
-    <li><a href="#esquemas">10. Formatos de esquema</a></li>
-    <li><a href="#limitaciones">11. Limitaciones</a></li>
+    <li><a href="#auth">7. Autenticación y roles</a></li>
+    <li><a href="#api">8. API REST</a></li>
+    <li><a href="#mdx">9. Cobertura MDX</a></li>
+    <li><a href="#ui">10. Aplicación visual (UI)</a></li>
+    <li><a href="#dialectos">11. Dialectos SQL</a></li>
+    <li><a href="#ejemplos">12. Ejemplos de extremo a extremo</a></li>
+    <li><a href="#schemas">13. Formatos de esquema</a></li>
+    <li><a href="#limitaciones">14. Limitaciones</a></li>
   </ol>
 </nav>
 <main><div class="inner">
 
 <h1>CuboDW — Manual técnico</h1>
-<p class="lead">Motor OLAP (estilo <strong>Mondrian</strong>) escrito en <strong>Go</strong>: interpreta <strong>MDX</strong>, mapea el modelo multidimensional a un <em>star schema</em> relacional, genera <strong>SQL</strong> (PostgreSQL) y devuelve resultados tipados. Despliegue en microservicios <strong>Docker</strong>.</p>
+<p class="lead">Motor OLAP (estilo <strong>Mondrian</strong>) escrito en <strong>Go</strong>: interpreta <strong>MDX</strong>, mapea el modelo multidimensional a un <em>star schema</em> relacional, genera <strong>SQL</strong> (5 dialectos), devuelve resultados tipados e incluye una <strong>aplicación visual</strong> de arrastrar y soltar con <strong>autenticación</strong>. Despliegue en microservicios <strong>Docker</strong>.</p>
 
-<div class="note"><strong>Cómo leer este manual.</strong> La sección <a href="#arquitectura">2</a> da el mapa de las capas. Las secciones <a href="#modulos">5</a> y <a href="#servicios">6</a> documentan cada módulo (paquete Go) con sus tipos, funciones y ejemplos. La <a href="#api">7</a> describe la API REST y la <a href="#mdx">8</a> la cobertura de MDX. Los números de los ejemplos son reales, calculados sobre el cubo de demostración <em>FoodMart</em> (año 1997).</p></div>
+<div class="note"><strong>Cómo leer este manual.</strong> La sección <a href="#arquitectura">2</a> da el mapa de capas. Las secciones <a href="#modulos">5</a> y <a href="#servicios">6</a> documentan cada módulo (paquete Go). La <a href="#auth">7</a> cubre la autenticación, la <a href="#api">8</a> la API REST, la <a href="#mdx">9</a> la cobertura MDX, la <a href="#ui">10</a> la interfaz visual y la <a href="#dialectos">11</a> los dialectos SQL. Los números de los ejemplos son reales, calculados sobre el cubo de demostración <em>FoodMart</em> (año 1997).</p></div>
 
-<h2 id="vision-general">1. Visión general</h2>
-<p>CuboDW convierte preguntas analíticas (en <strong>MDX</strong> o en un modelo de consulta JSON tipado) en <strong>SQL</strong> ejecutado en un data warehouse PostgreSQL, devolviendo una matriz de celdas tipadas (un <em>CellSet</em>). El cubo se describe mediante un <strong>esquema</strong> (Mondrian XML o YAML) que vincula conceptos lógicos (dimensiones, jerarquías, niveles, medidas) con tablas y columnas físicas.</p>
+<!-- ========================================================= -->
+<h2 id="vision">1. Visión general</h2>
+<p>CuboDW convierte preguntas analíticas (en <strong>MDX</strong> o en un modelo de consulta JSON tipado) en <strong>SQL</strong> ejecutado contra un data warehouse PostgreSQL, devolviendo una matriz de celdas tipadas (un <em>CellSet</em>). El cubo se describe con un <strong>esquema</strong> (Mondrian XML o YAML) que conecta conceptos lógicos (dimensiones, jerarquías, niveles, medidas) con tablas y columnas físicas. Sobre el motor están una <strong>UI visual</strong> y una capa de <strong>autenticación con roles</strong>.</p>
 <table>
   <tr><th>Ítem</th><th>Valor</th></tr>
   <tr><td>Lenguaje</td><td>Go 1.26</td></tr>
-  <tr><td>Base de datos destino</td><td>PostgreSQL 16 (dialecto de referencia)</td></tr>
+  <tr><td>Base de ejecución</td><td>PostgreSQL 16 (runtime vía pgx)</td></tr>
+  <tr><td>Generación de SQL</td><td>PostgreSQL, MySQL/MariaDB, DuckDB, SQL Server, Oracle</td></tr>
   <tr><td>Despliegue</td><td>Docker / docker compose (engine + postgres)</td></tr>
-  <tr><td>Lenguaje de consulta</td><td>MDX (subconjunto amplio) + modelo de consulta JSON</td></tr>
+  <tr><td>Lenguaje de consulta</td><td>MDX (subconjunto amplio) + modelo de query JSON + AI Query API</td></tr>
   <tr><td>Esquema</td><td>Mondrian XML v3 y/o YAML de autoría</td></tr>
+  <tr><td>Interfaz</td><td>SPA de arrastrar y soltar embebida (<code>/ui/</code>): tabla cruzada, gráficos, drill-through, MDX</td></tr>
+  <tr><td>Autenticación</td><td>Cookie de sesión (HMAC) + roles admin/user (bcrypt); registro abierto</td></tr>
   <tr><td>Licencia</td><td>Apache-2.0</td></tr>
   <tr><td>Módulo Go</td><td><code>cubodw</code></td></tr>
 </table>
 
+<!-- ========================================================= -->
 <h2 id="arquitectura">2. Arquitectura</h2>
-<p>El código es un único módulo Go en <strong>tres capas</strong>: <em>engine</em> (el "Mondrian"), <em>service</em> (la lógica estilo Saiku) y <em>web</em> (HTTP/REST). Una consulta MDX fluye de arriba hacia abajo:</p>
+<p>El código es un único módulo Go en <strong>tres capas</strong>: <em>engine</em> (el "Mondrian"), <em>service</em> (la lógica estilo Saiku) y <em>web</em> (HTTP/REST + UI). El flujo de una consulta MDX recorre las capas de arriba abajo:</p>
 <div class="diagram"><pre>
+   HTTP  →  web (middleware de autenticación)  →  handlers /saiku/api/*
+       │
    MDX (texto)
        │  engine/mdx  ............... lexer + parser  →  AST
        ▼
-   service/mdxeval  .............. resuelve ejes/miembros, reduce al modelo de consulta
+   service/mdxeval  .............. resuelve ejes/miembros, reduce al modelo de query
        │  engine/query  ............ {medidas, niveles en filas/columnas, filtros}
        ▼
-   engine/sql  ................... genera SQL (star schema, JOIN hecho↔dimensión)
-       │  service/queryexec  ....... lo ejecuta en PostgreSQL (pgx)
+   engine/sql  ................... genera SQL (star schema, JOIN hecho↔dimensión, por Dialect)
+       │  service/queryexec  ....... ejecuta en PostgreSQL (pgx) + caché de resultados
        ▼
-   PostgreSQL  →  records  →  service/mdxeval (pivot)  →  CellSet
+   PostgreSQL  →  records  →  service/mdxeval (pivote)  →  CellSet
        ▲
    engine/metadata  ............. IR del cubo (alimentada por schema/mondrian|yaml)
 </pre></div>
 <table>
   <tr><th>Capa</th><th>Paquetes</th><th>Responsabilidad</th></tr>
-  <tr><td>engine</td><td><code>metadata</code>, <code>schema/mondrian</code>, <code>schema/yaml</code>, <code>query</code>, <code>sql</code>, <code>mdx</code></td><td>Modelo multidimensional, parsing MDX, generación de SQL</td></tr>
-  <tr><td>service</td><td><code>discover</code>, <code>queryexec</code>, <code>mdxeval</code></td><td>Descubrimiento de metadatos, ejecución, evaluación MDX → CellSet</td></tr>
-  <tr><td>web</td><td><code>web</code></td><td>Servidor HTTP, endpoints <code>/saiku/api/*</code></td></tr>
-  <tr><td>apoyo</td><td><code>config</code>, <code>version</code>, <code>demo</code></td><td>Configuración por env, versión, esquema FoodMart embebido</td></tr>
+  <tr><td>engine</td><td><code>metadata</code>, <code>schema/mondrian</code>, <code>schema/yaml</code>, <code>query</code>, <code>sql</code> (+ <code>dialect</code>), <code>mdx</code></td><td>Modelo multidimensional, parsing MDX, generación de SQL multi-dialecto</td></tr>
+  <tr><td>service</td><td><code>discover</code>, <code>queryexec</code>, <code>mdxeval</code></td><td>Descubrimiento de metadatos, ejecución + caché, evaluación MDX → CellSet</td></tr>
+  <tr><td>web</td><td><code>web</code> (+ <code>web/ui</code> embebida)</td><td>Servidor HTTP, autenticación (middleware), endpoints <code>/saiku/api/*</code>, SPA <code>/ui/</code></td></tr>
+  <tr><td>apoyo</td><td><code>config</code>, <code>version</code>, <code>demo</code>, <code>auth</code></td><td>Configuración vía env, versión, FoodMart embebido, store de usuarios + tokens</td></tr>
 </table>
 
+<!-- ========================================================= -->
 <h2 id="ejecucion">3. Instalación y ejecución</h2>
-<p>Solo se necesita <strong>Docker</strong> + <strong>Docker Compose</strong> en el host. Go y Java no son necesarios: la compilación de Go se ejecuta en un contenedor.</p>
+<p>Solo se necesita <strong>Docker</strong> + <strong>Docker Compose</strong> en el host. Go y Java no son necesarios: la compilación de Go corre en contenedor.</p>
 <h4>Levantar el stack</h4>
-<pre><code>make up            # docker compose: engine + postgres:16 (FoodMart auto-cargado)
+<pre><code>make up            # docker compose: engine + postgres:16 (FoodMart cargado automáticamente)
 curl localhost:8088/health        # {"status":"ok"}
 curl localhost:8088/ready         # {"status":"ready"}  (conectado a Postgres)
-curl localhost:8088/saiku/api/info
-make down          # baja el stack</code></pre>
+# 👉 UI de arrastrar y soltar:  http://localhost:8088/ui/   (login demo: admin / admin)
+make down          # derriba el stack</code></pre>
 <h4>CLI (<code>cmd/cubodw</code>)</h4>
 <table>
   <tr><th>Comando</th><th>Descripción</th></tr>
-  <tr><td><code>cubodw serve-engine</code></td><td>Inicia el servidor HTTP del motor (flag <code>--addr</code>)</td></tr>
+  <tr><td><code>cubodw serve-engine</code></td><td>Levanta el servidor HTTP del motor (flag <code>--addr</code>)</td></tr>
   <tr><td><code>cubodw healthcheck --url …</code></td><td>GET al endpoint de salud; sale 0 si 200 (usado por el HEALTHCHECK de Docker)</td></tr>
   <tr><td><code>cubodw version</code></td><td>Imprime la versión</td></tr>
 </table>
@@ -108,334 +120,328 @@ make down          # baja el stack</code></pre>
 <table>
   <tr><th>Variable</th><th>Default</th><th>Descripción</th></tr>
   <tr><td><code>CUBODW_HTTP_ADDR</code></td><td><code>:8080</code></td><td>Dirección de escucha HTTP (en el contenedor)</td></tr>
-  <tr><td><code>CUBODW_PG_DSN</code> (o <code>PG_DSN</code>)</td><td>—</td><td>DSN de PostgreSQL. Vacío: <code>/ready</code> reporta <code>no-db</code></td></tr>
+  <tr><td><code>CUBODW_PG_DSN</code> <span class="muted">(o <code>PG_DSN</code>)</span></td><td>—</td><td>DSN de PostgreSQL. Vacío: <code>/ready</code> reporta <code>no-db</code></td></tr>
   <tr><td><code>CUBODW_SCHEMA</code></td><td>—</td><td>Ruta del esquema (<code>.xml</code>=Mondrian, <code>.yml/.yaml</code>=YAML). Vacío: FoodMart embebido</td></tr>
   <tr><td><code>CUBODW_CONNECTION</code></td><td><code>foodmart</code></td><td>Nombre lógico de la conexión expuesto en el descubrimiento</td></tr>
+  <tr><td><code>CUBODW_CACHE_SIZE</code></td><td><code>256</code></td><td>Máx. de resultados en caché (FIFO por SQL+args). <code>0</code> deshabilita</td></tr>
+  <tr><td><code>CUBODW_AUTH_ENABLED</code></td><td><code>true</code></td><td>Activa la autenticación y el middleware de protección</td></tr>
+  <tr><td><code>CUBODW_AUTH_SECRET</code></td><td>— <span class="muted">(dev)</span></td><td>Secreto HMAC que firma las cookies de sesión. <strong>Defínelo en producción</strong></td></tr>
+  <tr><td><code>CUBODW_USERS_FILE</code></td><td>—</td><td>Ruta JSON para persistir usuarios. Vacío: store solo en memoria</td></tr>
 </table>
-<div class="note">El host expone el engine en <code>localhost:8088</code> (mapeado al 8080 del contenedor). PostgreSQL está en <code>localhost:5432</code> (usuario/contraseña <code>cubodw</code>, base de datos <code>foodmart</code>).</div>
+<div class="note">El host expone el engine en <code>localhost:8088</code> (mapeado al puerto 8080 del contenedor). PostgreSQL está en <code>localhost:5432</code> (usuario/contraseña <code>cubodw</code>, base <code>foodmart</code>). Con la autenticación activa (por defecto), inicia sesión con el admin sembrado <code>admin / admin</code> antes de llamar a la API.</div>
 
+<!-- ========================================================= -->
 <h2 id="conceptos">4. Conceptos OLAP (glosario)</h2>
 <table>
   <tr><th>Término</th><th>Significado</th></tr>
   <tr><td><strong>Cubo</strong></td><td>Conjunto de medidas analizables por dimensiones. Mapea a una tabla de <em>hechos</em>.</td></tr>
-  <tr><td><strong>Dimensión</strong></td><td>Eje de análisis (Tiempo, Producto, Tienda). Mapea a una tabla de dimensión enlazada a los hechos por una clave foránea.</td></tr>
-  <tr><td><strong>Jerarquía</strong></td><td>Secuencia de niveles dentro de una dimensión (p. ej. País → Estado → Ciudad).</td></tr>
+  <tr><td><strong>Dimensión</strong></td><td>Eje de análisis (Tiempo, Producto, Tienda). Mapea a una tabla de dimensión unida a la de hechos por una clave foránea.</td></tr>
+  <tr><td><strong>Jerarquía</strong></td><td>Secuencia de niveles dentro de una dimensión (p. ej. País → Estado → Ciudad). Una dimensión puede tener <em>varias</em> jerarquías (p. ej. Time por defecto y <code>Weekly</code>).</td></tr>
   <tr><td><strong>Nivel</strong></td><td>Un grado de la jerarquía (p. ej. "Store State"). Mapea a una columna.</td></tr>
   <tr><td><strong>Miembro</strong></td><td>Un valor de un nivel (p. ej. "CA", "WA").</td></tr>
-  <tr><td><strong>Medida</strong></td><td>Valor numérico agregable (p. ej. Unit Sales = suma de unidades). Vive en la dimensión especial <code>[Measures]</code>.</td></tr>
+  <tr><td><strong>Medida</strong></td><td>Valor numérico agregable (p. ej. Unit Sales). Vive en la dimensión especial <code>[Measures]</code>.</td></tr>
+  <tr><td><strong>Miembro calculado</strong></td><td>Medida/miembro definido por expresión en <code>WITH MEMBER</code> (p. ej. Profit = Store Sales − Store Cost).</td></tr>
+  <tr><td><strong>Named set</strong></td><td>Conjunto con nombre definido en <code>WITH SET</code> y reutilizado en los ejes.</td></tr>
   <tr><td><strong>MDX</strong></td><td><em>MultiDimensional eXpressions</em>: lenguaje de consulta de cubos.</td></tr>
-  <tr><td><strong>Star schema</strong></td><td>Modelo físico: una tabla de hechos central + tablas de dimensión enlazadas por FK=PK.</td></tr>
+  <tr><td><strong>Star schema</strong></td><td>Modelo físico: una tabla de hechos central + tablas de dimensión unidas por FK=PK.</td></tr>
   <tr><td><strong>CellSet</strong></td><td>Resultado de una consulta MDX: ejes (con posiciones) y celdas (valores).</td></tr>
+  <tr><td><strong>Drill-through</strong></td><td>Bajar de una celda agregada a las filas de hechos crudas que la componen.</td></tr>
   <tr><td><strong>Nombre único</strong></td><td>Identificador MDX entre corchetes, p. ej. <code>[Time].[Year]</code>, <code>[Measures].[Unit Sales]</code>.</td></tr>
 </table>
 
+<!-- ========================================================= -->
 <h2 id="modulos">5. Módulos del motor</h2>
 
 <h3 id="m-metadata">5.1 <span class="pill">engine</span> metadata</h3>
 <p class="modpath">internal/engine/metadata</p>
-<p>Define la <strong>IR</strong> (representación interna) del modelo multidimensional, destino común de los loaders y fuente del descubrimiento y de la generación de SQL. Jerarquía de tipos: <code>Schema → Cube → Dimension → Hierarchy → Level (+ Property)</code> y, en paralelo, <code>Cube → Measure</code>.</p>
-<h4>Tipos principales</h4>
+<p>Define la <strong>IR</strong> del modelo multidimensional, objetivo común de los loaders y fuente del descubrimiento y de la generación de SQL. Jerarquía de tipos: <code>Schema → Cube → Dimension → Hierarchy → Level (+ Property)</code> y <code>Cube → Measure</code>.</p>
 <table>
   <tr><th>Tipo</th><th>Campos relevantes</th></tr>
-  <tr><td><code>Schema</code></td><td><code>Name</code>, <code>Cubes []*Cube</code>, <code>SharedDimensions []*Dimension</code></td></tr>
   <tr><td><code>Cube</code></td><td><code>Name</code>, <code>Caption</code>, <code>DefaultMeasure</code>, <code>Fact Relation</code>, <code>Dimensions</code>, <code>Measures</code></td></tr>
-  <tr><td><code>Dimension</code></td><td><code>Name</code>, <code>Type</code> (StandardDimension|TimeDimension), <code>ForeignKey</code>, <code>Hierarchies</code></td></tr>
-  <tr><td><code>Hierarchy</code></td><td><code>Name</code>, <code>HasAll</code>, <code>AllMemberName</code>, <code>PrimaryKey</code>, <code>Table Relation</code>, <code>Levels</code></td></tr>
-  <tr><td><code>Level</code></td><td><code>Name</code>, <code>Column</code>, <code>Type</code>, <code>LevelType</code>, <code>UniqueMembers</code>, <code>Properties</code></td></tr>
+  <tr><td><code>Hierarchy</code></td><td><code>Name</code>, <code>HasAll</code>, <code>PrimaryKey</code>, <code>Table</code>, <code>Levels</code>; <code>EffectiveName(d)</code> resuelve jerarquía por defecto vs nombrada</td></tr>
+  <tr><td><code>Level</code></td><td><code>Name</code>, <code>Column</code>, <code>NameColumn</code>, <code>ParentColumn</code>/<code>NullParentValue</code> (parent-child), <code>Type</code>, <code>LevelType</code>; <code>DisplayColumn()</code>, <code>IsParentChild()</code></td></tr>
   <tr><td><code>Measure</code></td><td><code>Name</code>, <code>Column</code>, <code>Aggregator</code> (sum|count|min|max|avg|distinct-count), <code>FormatString</code>, <code>Expression</code></td></tr>
-  <tr><td><code>Relation</code></td><td><code>Schema</code>, <code>Table</code>, <code>Alias</code> — referencia a una tabla física</td></tr>
-</table>
-<h4>Funciones</h4>
-<table>
-  <tr><th>Función</th><th>Descripción</th><th>Ejemplo / resultado</th></tr>
-  <tr><td><code>Bracket(name string) string</code></td><td>Entrecomillado MDX de un nombre (<code>]</code> se duplica)</td><td><code>Bracket("Unit Sales")</code> → <code>[Unit Sales]</code></td></tr>
-  <tr><td><code>(*Dimension) UniqueName()</code></td><td>Nombre único de la dimensión</td><td>→ <code>[Store]</code></td></tr>
-  <tr><td><code>(*Hierarchy) UniqueName(d)</code></td><td>Nombre único de la jerarquía</td><td>→ <code>[Store]</code> o <code>[Time].[Weekly]</code></td></tr>
-  <tr><td><code>(*Level) UniqueName(d,h)</code></td><td>Nombre único del nivel</td><td>→ <code>[Store].[Store Country]</code></td></tr>
-  <tr><td><code>(*Measure) UniqueName()</code></td><td>Nombre único de la medida</td><td>→ <code>[Measures].[Unit Sales]</code></td></tr>
-  <tr><td><code>(*Schema) FindCube(name)</code></td><td>Busca cubo por nombre</td><td><code>(*Cube, bool)</code></td></tr>
-  <tr><td><code>(*Cube) FindDimension(name)</code></td><td>Busca dimensión del cubo</td><td><code>(*Dimension, bool)</code></td></tr>
-  <tr><td><code>(*Cube) FindMeasure(name)</code></td><td>Busca medida del cubo</td><td><code>(*Measure, bool)</code></td></tr>
 </table>
 
 <h3 id="m-mondrian">5.2 <span class="pill">engine</span> schema/mondrian</h3>
 <p class="modpath">internal/engine/schema/mondrian</p>
-<p>Carga <strong>esquemas Mondrian (XML v3)</strong> a la IR. Resuelve <code>DimensionUsage</code> contra dimensiones compartidas, dimensiones inline y <code>MeasureExpression</code> (prefiere el dialecto <code>postgres</code>).</p>
+<p>Carga <strong>esquemas Mondrian (XML v3)</strong> a la IR. Resuelve <code>DimensionUsage</code> contra dimensiones compartidas, dimensiones inline, múltiples jerarquías por dimensión, <code>nameColumn</code>/<code>parentColumn</code> (parent-child) y <code>MeasureExpression</code> (prefiere el dialecto <code>postgres</code>).</p>
 <pre><code>func LoadFile(path string) (*metadata.Schema, error)
-func LoadBytes(b []byte)   (*metadata.Schema, error)
-func Load(r io.Reader)     (*metadata.Schema, error)</code></pre>
-<pre><code>schema, err := mondrian.LoadFile("FoodMart.xml")
-cube, _ := schema.FindCube("Sales")
-// cube.Fact.Table == "sales_fact_1997"
-// cube.Measures: Unit Sales, Store Cost, Store Sales, Sales Count, Customer Count, …
-// cube.Dimensions: Store, Time, Product, Customers, Gender, …</code></pre>
+func LoadBytes(b []byte)   (*metadata.Schema, error)</code></pre>
 
 <h3 id="m-yaml">5.3 <span class="pill">engine</span> schema/yaml</h3>
 <p class="modpath">internal/engine/schema/yaml</p>
-<p>Carga cubos en el <strong>formato de autoría YAML</strong> (conciso) a la misma IR. Cada dimensión YAML se aplana en una única jerarquía (con miembro "All").</p>
-<pre><code>func LoadFile(path string) (*metadata.Schema, error)
-func LoadBytes(b []byte)   (*metadata.Schema, error)
-func Load(r io.Reader)     (*metadata.Schema, error)</code></pre>
-<p>Vea el formato YAML completo en la sección <a href="#esquemas">10</a>.</p>
+<p>Carga cubos en el <strong>formato de autoría YAML</strong> a la misma IR. Cada dimensión YAML se aplana en una jerarquía única (con miembro "All"). Ver el formato completo en la sección <a href="#schemas">13</a>.</p>
 
 <h3 id="m-query">5.4 <span class="pill">engine</span> query</h3>
 <p class="modpath">internal/engine/query</p>
-<p>Define la <strong>especificación de una consulta tabular (pivot)</strong> y el formato del resultado tipado. Es el precursor del "thin query": describe medidas, niveles en filas/columnas y filtros <em>sin exponer MDX</em>. El evaluador MDX (sección 6.3) produce esta misma estructura.</p>
-<pre><code>type Query struct {
-    Cube     string       `json:"cube"`
-    Measures []string     `json:"measures"`
-    Rows     []LevelRef   `json:"rows,omitempty"`
-    Columns  []LevelRef   `json:"columns,omitempty"`
-    Filters  []Filter     `json:"filters,omitempty"`
-}
+<p>Define la <strong>especificación de consulta tabular (pivote)</strong> y el formato del resultado tipado. El evaluador MDX (sección 6.3) produce esta misma estructura. Incluye el formateador de medidas <code>query.Format</code> (formatString).</p>
+<pre><code>type Query struct { Cube string; Measures []string; Rows, Columns []LevelRef; Filters []Filter; Totals bool }
 type LevelRef struct { Dimension, Hierarchy, Level string }
-type Filter   struct { Dimension, Hierarchy, Level string; Members []string }
+type Column struct { Name, UniqueName, Kind, FormatString string }  // kind: level|measure
 
-type Result struct {
-    Cube    string     `json:"cube"`
-    SQL     string     `json:"sql"`      // SQL generada (transparencia)
-    Columns []Column   `json:"columns"`  // {name, uniqueName, kind: level|measure}
-    Rows    [][]Cell   `json:"rows"`     // {value, formatted}
-}</code></pre>
+// Format aplica un formatString estilo Mondrian/VBA: "#,###.00", "#,###",
+// "Standard", "Currency", "0.0%", … (agrupación de miles, decimales).
+func Format(v float64, formatString string) string</code></pre>
 
-<h3 id="m-sql">5.5 <span class="pill">engine</span> sql</h3>
+<h3 id="m-sql">5.5 <span class="pill">engine</span> sql + dialectos</h3>
 <p class="modpath">internal/engine/sql</p>
-<p>Genera <strong>SQL relacional</strong> a partir de una <code>query.Query</code> sobre un cubo (star schema). Dialecto actual: PostgreSQL.</p>
-<pre><code>type Dialect interface { QuoteIdent(name string) string; Name() string }
-type Postgres struct{}                       // dialecto PostgreSQL
-type Statement struct { SQL string; Args []any; Columns []query.Column }
-
+<p>Genera <strong>SQL relacional</strong> a partir de una <code>query.Query</code> sobre un cubo (star schema). La generación la dirige un <code>Dialect</code> que abstrae las diferencias entre bases. Ver la lista de dialectos en la sección <a href="#dialectos">11</a>.</p>
+<pre><code>type Dialect interface {
+    Name() string
+    QuoteIdent(name string) string                 // "x" | `x` | [x]
+    Placeholder(i int) string                      // $1 | ? | @p1 | :1
+    CastText(expr) string;  CastFloat(expr) string
+    InClause(col, members, startArg) (sql, args)   // ANY($n) o IN (…)
+    SelectTop(n) string;    LimitSuffix(n) string  // TOP n / LIMIT n / FETCH FIRST
+    AliasSep() string                              // " AS " | " " (Oracle)
+}
 func Build(d Dialect, cube *metadata.Cube, q query.Query) (*Statement, error)
-func BuildLevelMembers(d Dialect, cube *metadata.Cube, ref query.LevelRef, filters []query.Filter) (*Statement, error)</code></pre>
-<h4>Ejemplo — <code>Build</code></h4>
-<p>Consulta: medida <code>Unit Sales</code> por <code>Time.Year</code> →</p>
+func BuildLevelMembers(d Dialect, cube, ref, filters) (*Statement, error)
+func BuildDrillthrough(d Dialect, cube, filters, maxrows) (*Statement, error)
+func DialectByName(name string) (Dialect, error)</code></pre>
+<h4>Ejemplo — <code>Build</code> (PostgreSQL)</h4>
 <pre><code>SELECT "Time"."the_year", sum("f"."unit_sales")::float8
 FROM "sales_fact_1997" AS "f"
 JOIN "time_by_day" AS "Time" ON "f"."time_id" = "Time"."time_id"
 GROUP BY "Time"."the_year"
 ORDER BY 1</code></pre>
-<p>Los filtros se convierten en predicados <code>(columna)::text = ANY($n)</code>; las medidas numéricas salen como <code>float8</code> y los conteos como enteros. Las dimensiones en <em>snowflake</em> (vía <code>&lt;Join&gt;</code>) devuelven un error claro.</p>
-<h4>Ejemplo — <code>BuildLevelMembers</code></h4>
-<p>Enumera <strong>todos</strong> los miembros de un nivel desde la tabla de dimensión (base de la semántica "mostrar todos los miembros"):</p>
-<pre><code>SELECT DISTINCT "Store"."store_state"
-FROM "store" AS "Store"
-WHERE ("Store"."store_country")::text = ANY($1)   -- p. ej. ['USA']
-ORDER BY 1</code></pre>
+<p>Los niveles con <code>nameColumn</code> (p. ej. parent-child) muestran el nombre en vez de la clave vía <code>DisplayColumn()</code>. Las dimensiones en <em>snowflake</em> (vía <code>&lt;Join&gt;</code>) devuelven un error claro.</p>
 
 <h3 id="m-mdx">5.6 <span class="pill">engine</span> mdx</h3>
 <p class="modpath">internal/engine/mdx</p>
-<p>Implementa el <strong>lexer, AST y parser</strong> del lenguaje MDX, fiel a la gramática de Mondrian (<code>MdxParser.jj</code>). Solo hace el parsing (texto → AST); la evaluación está en <code>mdxeval</code>.</p>
-<pre><code>func Tokenize(input string)        ([]Token, error)   // lexer
-func ParseQuery(input string)      (*Query, error)    // SELECT … FROM … WHERE …
-func ParseExpression(input string) (Exp, error)       // expresión aislada</code></pre>
-<h4>AST</h4>
-<p>Todo es una <code>Exp</code>. Las llamadas a función/operadores se convierten en <code>FunCall{Name, Syntax, Args}</code>; los identificadores son <code>Id</code> con segmentos. <strong>Decisión de diseño fiel a Mondrian:</strong> miembros como <code>[Measures].[Unit Sales]</code> y <code>[Store].[USA].Children</code> son <em>un único <code>Id</code> multi-segmento</em>; solo se convierten en <code>FunCall</code> cuando hay paréntesis (método/función).</p>
-<table>
-  <tr><th>Tipo</th><th>Descripción</th></tr>
-  <tr><td><code>Query</code></td><td><code>Formulas []*Formula</code> (WITH), <code>Axes []*Axis</code>, <code>Cube string</code>, <code>Slicer Exp</code> (WHERE)</td></tr>
-  <tr><td><code>Axis</code></td><td><code>NonEmpty bool</code>, <code>Exp</code>, <code>Ordinal int</code> (0=COLUMNS,1=ROWS,…)</td></tr>
-  <tr><td><code>Formula</code></td><td><code>IsMember bool</code>, <code>Name *Id</code>, <code>Exp</code></td></tr>
-  <tr><td><code>FunCall</code></td><td><code>Name</code>, <code>Syntax</code> (Function/Method/Property/Infix/Prefix/Postfix/Braces/Parentheses/Case/Cast), <code>Args []Exp</code></td></tr>
-  <tr><td><code>Id</code></td><td><code>Segments []Segment</code> (Name, Quoted, Key)</td></tr>
-  <tr><td>Literales</td><td><code>NumericLiteral</code>, <code>StringLiteral</code>, <code>NullLiteral</code></td></tr>
-</table>
-<p>Cada nodo tiene <code>String()</code> que reconstruye una forma canónica (útil para depurar y para generar MDX).</p>
-<pre><code>q, _ := mdx.ParseQuery(`SELECT {[Measures].[Unit Sales]} ON COLUMNS,
-                        [Store].[Store Country].Members ON ROWS
-                        FROM [Sales] WHERE [Time].[1997]`)
-// q.Cube == "Sales";  len(q.Axes) == 2
-// q.Axes[1].Exp.String() == "[Store].[Store Country].Members"
-// q.Slicer.String()      == "[Time].[1997]"</code></pre>
+<p>Implementa el <strong>lexer, AST y parser</strong> de MDX, fiel a la gramática de Mondrian (<code>MdxParser.jj</code>). Solo hace parsing (texto → AST); la evaluación está en <code>mdxeval</code>.</p>
+<pre><code>func ParseQuery(input string)      (*Query, error)    // SELECT … FROM … WHERE …
+func ParseExpression(input string) (Exp, error)</code></pre>
+<p><strong>Decisión de diseño fiel a Mondrian:</strong> miembros como <code>[Measures].[Unit Sales]</code> son <em>un único <code>Id</code> multi-segmento</em>; solo se vuelven <code>FunCall</code> con paréntesis (método/función). Soporta <code>WITH MEMBER</code>/<code>WITH SET</code>, rangos (<code>m1 : m2</code>), <code>CASE</code> y <code>CAST</code>.</p>
 
 <h3 id="m-demo">5.7 <span class="pill">apoyo</span> demo</h3>
 <p class="modpath">internal/demo</p>
-<p>Embebe el esquema <strong>FoodMart</strong> (Mondrian XML) usado como cubo por defecto cuando no se configura ningún esquema. Las tablas referenciadas coinciden con el FoodMart cargado en Postgres.</p>
-<pre><code>func Schema() (*metadata.Schema, error)   // carga el FoodMart embebido
-func FoodMartXML() []byte                 // contenido XML en bruto</code></pre>
+<p>Embebe el esquema <strong>FoodMart</strong> (Mondrian XML) usado como cubo por defecto cuando no se configura ningún esquema.</p>
 
+<!-- ========================================================= -->
 <h2 id="servicios">6. Módulos de servicio</h2>
 
 <h3 id="s-discover">6.1 <span class="pill">service</span> discover</h3>
 <p class="modpath">internal/service/discover</p>
-<p>Sirve metadatos del esquema cargado (el rol del <code>OlapMetaExplorer</code> de Saiku). Modela el árbol <code>conexión → catálogo → esquema → cubo</code> sobre un único esquema en memoria.</p>
-<pre><code>func New(connection string, schema *metadata.Schema) *Service
-func (s *Service) Connection() string
-func (s *Service) Catalog() string
-func (s *Service) SchemaName() string
-func (s *Service) Cubes() []*metadata.Cube
-func (s *Service) Cube(name string) (*metadata.Cube, bool)</code></pre>
+<p>Sirve metadatos del esquema cargado (rol del <code>OlapMetaExplorer</code> de Saiku). Modela el árbol <code>conexión → catálogo → esquema → cubo</code> sobre un único esquema en memoria.</p>
 
 <h3 id="s-queryexec">6.2 <span class="pill">service</span> queryexec</h3>
 <p class="modpath">internal/service/queryexec</p>
-<p>Planifica (genera SQL) y <strong>ejecuta</strong> consultas de cubo contra PostgreSQL, devolviendo un <code>query.Result</code> tipado.</p>
-<pre><code>func New(pool *pgxpool.Pool) *Service
-func (s *Service) Plan(cube, q query.Query)              (*sql.Statement, error)  // solo genera SQL (validación)
-func (s *Service) Run(ctx, cube, st *sql.Statement)      (*query.Result, error)   // ejecuta
-func (s *Service) EnumerateLevel(ctx, cube, ref, filters) ([]string, error)       // miembros vía dimensión
-func (s *Service) HasDB() bool                                                     // ¿hay conexión?</code></pre>
-<p>Las medidas numéricas (sumas) regresan como <code>float8</code> → número JSON; los conteos como enteros. <code>EnumerateLevel</code> lista los miembros de un nivel desde la tabla de dimensión (no de los hechos).</p>
+<p>Planifica (genera SQL) y <strong>ejecuta</strong> consultas de cubo contra PostgreSQL, con <strong>caché de resultados</strong> (FIFO por SQL+args), enumeración de miembros y drill-through.</p>
+<pre><code>func New(pool *pgxpool.Pool, cacheSize int) *Service
+func (s *Service) Run(ctx, cube, st *sql.Statement)         (*query.Result, error)
+func (s *Service) EnumerateLevel(ctx, cube, ref, filters)   ([]string, error)
+func (s *Service) Drillthrough(ctx, cube, filters, maxrows) (*query.Result, error)
+func (s *Service) CacheStats() (hits, misses, size int)
+func (s *Service) CacheClear()</code></pre>
+<p>Cada celda de medida se formatea con el <code>FormatString</code> de la columna (p. ej. <code>565,238.13</code>).</p>
 
 <h3 id="s-mdxeval">6.3 <span class="pill">service</span> mdxeval</h3>
 <p class="modpath">internal/service/mdxeval</p>
-<p>El <strong>evaluador MDX</strong>. Reduce el AST al modelo de consulta (niveles + medidas + filtros), ejecuta vía <code>queryexec</code> y <strong>pivotea</strong> los records en un <code>CellSet</code>. Estrategia: resuelve las <em>posiciones de cada eje de forma independiente</em> (en el contexto del slicer), lo que hace que el ordenamiento/límite/filtrado por medida sea fiel a Mondrian y habilita los miembros calculados.</p>
+<p>El <strong>evaluador MDX</strong>. Reduce el AST al modelo de query (niveles + medidas + filtros), ejecuta vía <code>queryexec</code> y <strong>pivota</strong> los records en un <code>CellSet</code>. Resuelve las posiciones de cada eje de forma independiente (en el contexto del slicer), habilitando orden/límite/filtro por medida, miembros calculados, <em>named sets</em>, rangos, inteligencia de tiempo (<code>time.go</code>), múltiples jerarquías y parent-child.</p>
 <pre><code>func Evaluate(ctx, cube *metadata.Cube, q *mdx.Query, exec *queryexec.Service) (*CellSet, error)</code></pre>
-<h4>Resultado — <code>CellSet</code></h4>
-<pre><code>type CellSet struct {
-    Cube  string     `json:"cube"`
-    SQL   string     `json:"sql"`
-    Axes  []Axis     `json:"axes"`    // {ordinal, name, positions:[{members:[{caption,uniqueName}]}]}
-    Cells []Cell     `json:"cells"`   // {coords:[…], value, formatted}
-    Grid  *Grid      `json:"grid"`    // conveniencia para 2 ejes: columnHeaders, rowHeaders, rows[][]
-}</code></pre>
 
-<h2 id="api">7. API REST</h2>
-<p>Todas las rutas viven bajo <code>/saiku/api/*</code> (contrato compatible con Saiku, para conectar una UI en el futuro). Base local: <code>http://localhost:8088</code>.</p>
+<h3 id="s-auth">6.4 <span class="pill">apoyo</span> auth</h3>
+<p class="modpath">internal/auth</p>
+<p>Store de <strong>usuarios</strong> (contraseñas en <strong>bcrypt</strong>, persistencia opcional en JSON) y <strong>tokens de sesión</strong> firmados (HMAC-SHA256, <em>stateless</em>). Roles <code>admin</code>/<code>user</code>; siembra <code>admin/admin</code> cuando está vacío. Uso en la sección <a href="#auth">7</a>.</p>
+<pre><code>func NewStore(file string) (*Store, error)
+func (s *Store) Register(username, password string, role Role) error
+func (s *Store) Authenticate(username, password string) (User, bool)
+func SignToken(secret []byte, u User, ttl time.Duration) string
+func VerifyToken(secret []byte, token string) (User, bool)</code></pre>
+
+<!-- ========================================================= -->
+<h2 id="auth">7. Autenticación y roles</h2>
+<p>La autenticación está <strong>activa por defecto</strong> (<code>CUBODW_AUTH_ENABLED=true</code>). Un <strong>middleware</strong> protege todos los endpoints bajo <code>/saiku/api/*</code>, excepto los públicos. La sesión es una <strong>cookie firmada (HMAC)</strong> — sin estado en el servidor; las contraseñas usan <strong>bcrypt</strong>.</p>
+<table>
+  <tr><th>Recurso</th><th>Detalle</th></tr>
+  <tr><td>Roles</td><td><code>admin</code> (todo) y <code>user</code> (consulta/descubrimiento)</td></tr>
+  <tr><td>Admin sembrado</td><td><code>admin / admin</code> (cámbialo en producción)</td></tr>
+  <tr><td>Registro</td><td><strong>abierto</strong>: cualquiera crea un usuario <code>user</code> y queda autenticado</td></tr>
+  <tr><td>Rutas públicas</td><td><code>/health</code>, <code>/ready</code>, <code>/saiku/api/info</code>, <code>/saiku/api/auth/*</code>, <code>/ui/*</code></td></tr>
+  <tr><td>Solo admin</td><td>Acciones administrativas (p. ej. <code>POST /saiku/api/cache/clear</code>) → <code>403</code> para <code>user</code></td></tr>
+  <tr><td>Cookie</td><td><code>cubodw_session</code>, <code>HttpOnly</code>, <code>SameSite=Lax</code>, TTL 12h</td></tr>
+</table>
+<h4>Flujo (cURL con cookies)</h4>
+<pre><code># sin login, un endpoint protegido → 401
+curl -i localhost:8088/saiku/api/discover                       # HTTP 401
+
+# login (guarda la cookie de sesión)
+curl -c cookies.txt -X POST localhost:8088/saiku/api/auth/login \
+  -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin"}'
+# {"username":"admin","role":"admin"}
+
+# con la cookie, la API responde
+curl -b cookies.txt localhost:8088/saiku/api/discover           # HTTP 200
+
+# registro abierto (crea rol user, ya autenticado)
+curl -X POST localhost:8088/saiku/api/auth/register \
+  -H 'Content-Type: application/json' -d '{"username":"maria","password":"s3creto"}'
+# {"username":"maria","role":"user"}</code></pre>
+<div class="warn"><strong>Producción.</strong> Define <code>CUBODW_AUTH_SECRET</code> (si no, se usa un secreto de desarrollo, con aviso en el log), persiste usuarios con <code>CUBODW_USERS_FILE</code>, cambia la contraseña del <code>admin</code> y sirve detrás de HTTPS (para habilitar el atributo <code>Secure</code> en la cookie).</div>
+
+<!-- ========================================================= -->
+<h2 id="api">8. API REST</h2>
+<p>Todas las rutas están bajo <code>/saiku/api/*</code> (contrato compatible con Saiku). Base local: <code>http://localhost:8088</code>. Con la auth activa, envía la cookie de sesión (sección <a href="#auth">7</a>) — los ejemplos omiten <code>-b cookies.txt</code> por brevedad.</p>
 
 <h4><span class="tag get">GET</span> <code>/health</code> · <code>/ready</code> · <code>/saiku/api/info</code></h4>
-<p>Salud (liveness), preparación (hace ping a Postgres) y metadatos del servicio.</p>
-<pre><code>$ curl localhost:8088/saiku/api/info
-{"name":"cubodw-engine","version":"0.0.1","engine":"mondrian-go (en construcción)",
- "connection":"foodmart","schema":"FoodMart","cubes":7}</code></pre>
+<p>Salud (liveness), prontitud (hace ping a Postgres) y metadatos del servicio (incluye <code>cache</code>). Públicos.</p>
 
-<h4><span class="tag get">GET</span> <code>/saiku/api/discover</code></h4>
-<p>El árbol <code>conexión → catálogo → esquema → cubos</code>.</p>
-<pre><code>$ curl localhost:8088/saiku/api/discover
-[{"name":"foodmart","catalogs":[{"name":"FoodMart","schemas":[{"name":"FoodMart",
-  "cubes":[{"name":"Sales","uniqueName":"[Sales]","caption":"Sales", … }, … ]}]}]}]</code></pre>
+<h4><span class="tag post">POST</span> <code>/saiku/api/auth/register</code> · <code>/login</code> · <code>/logout</code> · <span class="tag get">GET</span> <code>/me</code></h4>
+<p>Registro abierto (crea <code>user</code>), login (cookie), logout (limpia la cookie) e identidad actual.</p>
 
-<h4><span class="tag get">GET</span> <code>/saiku/api/discover/{conn}/{catalog}/{schema}/{cube}/metadata</code></h4>
-<p>Dimensiones (con jerarquías y niveles) y medidas de un cubo. (También existe <code>…/{cube}/dimensions</code> para solo la lista de dimensiones.)</p>
-<pre><code>$ curl localhost:8088/saiku/api/discover/foodmart/FoodMart/FoodMart/Sales/metadata
-{"name":"Sales","uniqueName":"[Sales]","defaultMeasure":"Unit Sales",
- "dimensions":[{"name":"Time","hierarchies":[{"levels":[
-     {"name":"Year","uniqueName":"[Time].[Year]"}, … ]}]}, … ],
- "measures":[{"name":"Unit Sales","uniqueName":"[Measures].[Unit Sales]", … }, … ]}</code></pre>
+<h4><span class="tag get">GET</span> <code>/saiku/api/discover</code> · <code>…/{cube}/metadata</code></h4>
+<p>Árbol <code>conexión → catálogo → esquema → cubos</code> y, por cubo, dimensiones (con jerarquías y niveles) y medidas.</p>
 
 <h4><span class="tag post">POST</span> <code>/saiku/api/query</code> · <code>/saiku/api/query/preview</code></h4>
-<p>Ejecuta (o, en <code>/preview</code>, solo valida + genera SQL) el <strong>modelo de consulta JSON</strong> (sin MDX).</p>
+<p>Ejecuta (o solo valida + genera SQL, en <code>/preview</code>) el <strong>modelo de query JSON</strong> (sin MDX). Con <code>"totals":true</code> devuelve también la fila de totales.</p>
 <pre><code>$ curl -X POST localhost:8088/saiku/api/query -H 'Content-Type: application/json' -d '{
-  "cube":"Sales",
-  "rows":[{"dimension":"Time","level":"Year"}],
+  "cube":"Sales", "rows":[{"dimension":"Time","level":"Year"}],
   "measures":["Unit Sales","Store Sales"]
 }'
-{"cube":"Sales","sql":"SELECT …","columns":[
-   {"name":"Year","uniqueName":"[Time].[Year]","kind":"level"},
-   {"name":"Unit Sales","uniqueName":"[Measures].[Unit Sales]","kind":"measure"},
-   {"name":"Store Sales","uniqueName":"[Measures].[Store Sales]","kind":"measure"}],
- "rows":[[{"value":1997,"formatted":"1997"},
-          {"value":266773,"formatted":"266773"},
-          {"value":565238.13,"formatted":"565238.13"}]]}</code></pre>
-<p>Códigos: <code>400</code> nombre inválido (medida/dimensión), <code>404</code> cubo inexistente, <code>503</code> sin base de datos.</p>
+{"rows":[[{"value":1997,"formatted":"1997"},
+          {"value":266773,"formatted":"266,773"},
+          {"value":565238.13,"formatted":"565,238.13"}]]}</code></pre>
 
-<h4><span class="tag post">POST</span> <code>/saiku/api/mdx/parse</code></h4>
-<p>Hace el parsing de una consulta MDX y devuelve el AST (ejes, slicer, fórmulas, forma canónica).</p>
-<pre><code>$ curl -X POST localhost:8088/saiku/api/mdx/parse -H 'Content-Type: application/json' \
-  -d '{"mdx":"SELECT {[Measures].[Unit Sales]} ON COLUMNS, [Store].[Store Country].Members ON ROWS FROM [Sales]"}'
-{"status":"PARSED","cube":"Sales","cubeKnown":true,
- "axes":[{"ordinal":0,"name":"COLUMNS","nonEmpty":false,"exp":"{[Measures].[Unit Sales]}"},
-         {"ordinal":1,"name":"ROWS","nonEmpty":false,"exp":"[Store].[Store Country].Members"}],
- "slicer":"","canonical":"SELECT …"}</code></pre>
+<h4><span class="tag post">POST</span> <code>/saiku/api/query/drillthrough</code></h4>
+<p>Devuelve las <strong>filas de hechos crudas</strong> detrás de una celda agregada (filtros = miembros de la celda; <code>maxrows</code> limita).</p>
 
-<h4><span class="tag post">POST</span> <code>/saiku/api/mdx/execute</code></h4>
-<p>Hace el parsing, <strong>evalúa</strong> y devuelve el <code>CellSet</code> (con un <code>grid</code> para 2 ejes).</p>
-<pre><code>$ curl -X POST localhost:8088/saiku/api/mdx/execute -H 'Content-Type: application/json' -d '{
-  "mdx":"SELECT {[Measures].[Unit Sales],[Measures].[Store Sales]} ON COLUMNS, [Store].[Store Country].Members ON ROWS FROM [Sales]"
-}'
-{ … "grid":{"columnHeaders":["Unit Sales","Store Sales"],
-            "rowHeaders":["USA"],
-            "rows":[["266773","565238.13"]]}}</code></pre>
+<h4><span class="tag post">POST</span> <code>/saiku/api/mdx/parse</code> · <code>/saiku/api/mdx/execute</code></h4>
+<p><code>parse</code> devuelve el AST (ejes, slicer, fórmulas, forma canónica). <code>execute</code> hace parse, <strong>evalúa</strong> y devuelve el <code>CellSet</code> (con <code>grid</code> para 2 ejes).</p>
 
-<h2 id="mdx">8. Cobertura MDX</h2>
-<p>El motor cubre un subconjunto amplio de MDX. Las tablas siguientes listan lo soportado, con ejemplos y el resultado esperado sobre FoodMart (1997).</p>
+<h4><span class="tag get">GET</span> <code>/saiku/api/ai/cubes</code> · <code>/ai/schema/{cube}</code> · <span class="tag post">POST</span> <code>/ai/query</code></h4>
+<p><strong>AI Query API</strong>: consulta cubos <em>sin MDX</em>, con esquema auto-descriptivo (miembros de muestra) y validación tipada. Ante un error de nombre, devuelve <code>{status, field, available:[…]}</code> para autocorrección.</p>
 
-<h3>8.1 Estructura de la consulta</h3>
-<pre><code>[WITH &lt;fórmulas&gt;]
+<h4><span class="tag get">GET</span> <code>/saiku/api/cache</code> · <span class="tag post">POST</span> <code>/saiku/api/cache/clear</code> <span class="muted">(admin)</span></h4>
+<p>Métricas del caché (<code>hits</code>, <code>misses</code>, <code>size</code>) y limpieza (rol <code>admin</code>).</p>
+<p class="muted">Códigos: <code>400</code> nombre inválido · <code>401</code> no autenticado · <code>403</code> requiere admin · <code>404</code> cubo inexistente · <code>503</code> sin base.</p>
+
+<!-- ========================================================= -->
+<h2 id="mdx">9. Cobertura MDX</h2>
+<p>El motor cubre un subconjunto amplio de MDX. Las tablas listan lo soportado, con ejemplos y resultado esperado sobre FoodMart (1997).</p>
+
+<h3>9.1 Estructura de la query</h3>
+<pre><code>[WITH &lt;fórmulas: MEMBER | SET&gt;]
 SELECT &lt;conjunto&gt; [NON EMPTY] ON COLUMNS [, &lt;conjunto&gt; ON ROWS …]
 FROM [Cubo]
 [WHERE &lt;slicer&gt;]</code></pre>
-<table>
-  <tr><th>Construcción</th><th>Ejemplo</th></tr>
-  <tr><td>Ejes</td><td><code>… ON COLUMNS</code>, <code>… ON ROWS</code>, <code>… ON AXIS(2)</code>, <code>… ON 0</code></td></tr>
-  <tr><td>NON EMPTY</td><td><code>NON EMPTY [Store].[Store State].Members ON ROWS</code> (poda miembros sin hechos)</td></tr>
-  <tr><td>Slicer (WHERE)</td><td><code>WHERE ([Time].[1997], [Gender].[F])</code></td></tr>
-</table>
 
-<h3>8.2 Miembros y conjuntos</h3>
+<h3>9.2 Miembros y conjuntos</h3>
 <table>
-  <tr><th>Función</th><th>Ejemplo</th><th>Resultado esperado</th></tr>
+  <tr><th>Función</th><th>Ejemplo</th><th>Esperado</th></tr>
   <tr><td><code>{ … }</code> (conjunto)</td><td><code>{[Measures].[Unit Sales],[Measures].[Store Sales]}</code></td><td>2 medidas</td></tr>
-  <tr><td><code>( … )</code> (tupla)</td><td><code>([Time].[1997],[Gender].[F])</code></td><td>una posición con 2 miembros</td></tr>
-  <tr><td><code>.Members</code></td><td><code>[Store].[Store State].Members</code></td><td>todos los estados (10) — vacíos incluidos</td></tr>
-  <tr><td><code>.Children</code></td><td><code>[Store].[USA].Children</code></td><td>CA, OR, WA</td></tr>
+  <tr><td><code>( … )</code> (tupla)</td><td><code>([Time].[1997],[Gender].[F])</code></td><td>una posición, 2 miembros</td></tr>
+  <tr><td><code>.Members</code> / <code>.Children</code></td><td><code>[Store].[USA].Children</code></td><td>CA, OR, WA</td></tr>
+  <tr><td><code>m1 : m2</code> (rango)</td><td><code>[Time].[1997].[Q1] : [Time].[1997].[Q3]</code></td><td>Q1, Q2, Q3</td></tr>
   <tr><td><code>CrossJoin(a,b)</code></td><td><code>CrossJoin([Gender].[Gender].Members,[Marital Status].[Marital Status].Members)</code></td><td>4 tuplas</td></tr>
 </table>
 
-<h3>8.3 Funciones de conjunto (componibles)</h3>
+<h3>9.3 Funciones de conjunto (componibles)</h3>
 <table>
   <tr><th>Función</th><th>Ejemplo</th><th>Resultado</th></tr>
-  <tr><td><code>Order(set, expr, [B]ASC|[B]DESC)</code></td><td><code>Order([Store].[Store State].Members,[Measures].[Unit Sales],BDESC)</code></td><td>WA, CA, OR (desc)</td></tr>
-  <tr><td><code>TopCount(set, n, expr)</code></td><td><code>TopCount([Store].[Store State].Members,2,[Measures].[Unit Sales])</code></td><td>WA, CA</td></tr>
-  <tr><td><code>BottomCount(set, n, expr)</code></td><td>análogo, ascendente</td><td>los <em>n</em> menores</td></tr>
+  <tr><td><code>Order(set, expr, [B]ASC|[B]DESC)</code></td><td><code>Order([Store].[Store State].Members,[Measures].[Unit Sales],BDESC)</code></td><td>WA, CA, OR</td></tr>
+  <tr><td><code>TopCount / BottomCount</code></td><td><code>TopCount([Store].[Store State].Members,2,[Measures].[Unit Sales])</code></td><td>WA, CA</td></tr>
   <tr><td><code>Filter(set, cond)</code></td><td><code>Filter([Store].[Store State].Members,[Measures].[Store Sales] &gt; 150000)</code></td><td>CA, WA</td></tr>
-  <tr><td><code>Union / Except / Intersect</code></td><td><code>Except([Store].[Store State].Members,{[Store].[USA].[WA]})</code></td><td>todo excepto WA</td></tr>
-  <tr><td><code>Head / Tail (set [, n])</code></td><td><code>Head(Order(…BDESC),2)</code></td><td>los 2 primeros (¡composición!)</td></tr>
-  <tr><td><code>Distinct / Hierarchize</code></td><td><code>Hierarchize([Store].[Store State].Members)</code></td><td>ordenado por nivel</td></tr>
+  <tr><td><code>Union / Except / Intersect</code></td><td><code>Except([Store].[Store State].Members,{[Store].[USA].[WA]})</code></td><td>todo menos WA</td></tr>
+  <tr><td><code>Head / Tail / Distinct / Hierarchize</code></td><td><code>Head(Order(…BDESC),2)</code></td><td>los 2 primeros (¡composición!)</td></tr>
 </table>
 
-<h3>8.4 Miembros calculados (WITH MEMBER)</h3>
-<p>Aritmética sobre medidas y funciones escalares, evaluadas en Go por celda.</p>
+<h3>9.4 Miembros calculados y named sets (WITH)</h3>
 <table>
   <tr><th>Recurso</th><th>Ejemplo</th><th>Resultado (USA, 1997)</th></tr>
   <tr><td>Aritmética</td><td><code>WITH MEMBER [Measures].[Profit] AS [Measures].[Store Sales] - [Measures].[Store Cost]</code></td><td>339610.90</td></tr>
-  <tr><td><code>IIf(cond, x, y)</code></td><td><code>IIf([Measures].[Unit Sales] &gt; 80000, 1, 0)</code></td><td>1 / 0</td></tr>
-  <tr><td><code>CoalesceEmpty(a, b)</code></td><td><code>CoalesceEmpty([Measures].[X],[Measures].[Store Sales])</code></td><td>el primero definido</td></tr>
-  <tr><td><code>Sum / Avg / Count / Aggregate</code> (sobre un conjunto)</td><td><code>[Measures].[Unit Sales] / Sum([Store].[Store State].Members,[Measures].[Unit Sales]) * 100</code></td><td>% del total (CA 28.02, OR 25.36, WA 46.62)</td></tr>
+  <tr><td><code>IIf</code> / <code>CoalesceEmpty</code></td><td><code>IIf([Measures].[Unit Sales] &gt; 80000, 1, 0)</code></td><td>1 / 0</td></tr>
+  <tr><td><code>Sum/Avg/Count/Min/Max/Aggregate</code> (sobre conjunto)</td><td><code>… / Sum([Store].[Store State].Members,[Measures].[Unit Sales]) * 100</code></td><td>% del total (CA 28.02, OR 25.36, WA 46.62)</td></tr>
+  <tr><td><code>WITH SET</code> (named set)</td><td><code>WITH SET [BigStates] AS Filter([Store].[Store State].Members, [Measures].[Store Sales] &gt; 150000)</code></td><td>CA, WA reutilizables en los ejes</td></tr>
 </table>
-<div class="ok"><strong>Subtotal en el contexto correcto.</strong> En <code>Sum(set, medida)</code>, el subtotal se precalcula agrupado por las <em>demás</em> dimensiones del grid (no un escalar global). P. ej., en un grid <code>Género × Estado</code>, el % por estado suma 100% <em>dentro de cada género</em>.</div>
+<div class="ok"><strong>Subtotal en el contexto correcto.</strong> En <code>Sum(set, medida)</code> el subtotal se precalcula agrupado por las <em>demás</em> dimensiones del grid (no un escalar global). P. ej., en un grid <code>Género × Estado</code>, el % por estado suma 100% <em>dentro de cada género</em>.</div>
 
-<h3>8.5 Operadores y precedencia</h3>
-<p>De menor a mayor precedencia: <code>OR / XOR / :</code> → <code>AND</code> → <code>NOT</code> → comparaciones (<code>= &lt;&gt; &lt; &gt; &lt;= &gt;=</code>, <code>IS</code>) → <code>+ - ||</code> → <code>* /</code> → unario <code>+ -</code> → <code>.</code> (miembro/método). Soporta <code>CASE … WHEN … THEN … ELSE … END</code> y <code>CAST</code>.</p>
+<h3>9.5 Inteligencia de tiempo</h3>
+<table>
+  <tr><th>Función</th><th>Significado</th></tr>
+  <tr><td><code>PrevMember</code> / <code>NextMember</code></td><td>Miembro anterior/siguiente en el mismo nivel</td></tr>
+  <tr><td><code>Lag(n)</code> / <code>Lead(n)</code></td><td><em>n</em> posiciones atrás/adelante</td></tr>
+  <tr><td><code>Ytd([miembro])</code></td><td>Conjunto desde el inicio del año hasta el miembro (year-to-date)</td></tr>
+</table>
 
-<h2 id="ejemplos">9. Ejemplos de extremo a extremo</h2>
+<h3>9.6 Múltiples jerarquías y parent-child</h3>
+<table>
+  <tr><th>Recurso</th><th>Ejemplo</th><th>Resultado</th></tr>
+  <tr><td>Jerarquía nombrada</td><td><code>[Time].[Weekly].[Week].Members</code></td><td>52 semanas (vs 4 trimestres en la jerarquía por defecto)</td></tr>
+  <tr><td>Parent-child (lista plana por nombre)</td><td><code>TopCount([Employees].[Employee Id].Members,5,[Measures].[Org Salary])</code> (cubo HR)</td><td>empleados por nombre (Brenda Blumberg, …)</td></tr>
+</table>
 
-<h4>9.1 Desglose por dimensión (records)</h4>
+<h3>9.7 Formato de medidas</h3>
+<p>El <code>formatString</code> de cada medida se aplica al resultado: <code>Unit Sales</code> (<code>Standard</code>) → <code>266,773</code>; <code>Store Sales</code> (<code>#,###.00</code>) → <code>565,238.13</code>; <code>Sales Count</code> (<code>#,###</code>) → <code>86,837</code>.</p>
+
+<h3>9.8 Operadores y precedencia</h3>
+<p>De menor a mayor: <code>OR / XOR / :</code> → <code>AND</code> → <code>NOT</code> → comparaciones → <code>+ - ||</code> → <code>* /</code> → unario <code>+ -</code> → <code>.</code> (miembro/método). Soporta <code>CASE … WHEN … THEN … ELSE … END</code> y <code>CAST</code>.</p>
+
+<!-- ========================================================= -->
+<h2 id="ui">10. Aplicación visual (UI)</h2>
+<p>Una <strong>SPA</strong> ligera (HTML/CSS/JS sin toolchain Node), embebida en el binario vía <code>go:embed</code> y servida en <code>/ui/</code>. Tras el login (sección <a href="#auth">7</a>) ofrece dos modos: <strong>Constructor</strong> (arrastrar y soltar) y <strong>MDX</strong>.</p>
+<table>
+  <tr><th>Recurso</th><th>Descripción</th></tr>
+  <tr><td>Constructor de arrastrar y soltar</td><td>Arrastra medidas y niveles a las zonas <em>Filas</em>, <em>Columnas</em>, <em>Medidas</em>, <em>Filtros</em> → <code>POST /saiku/api/query</code></td></tr>
+  <tr><td>Tabla cruzada (pivote)</td><td>Con la zona <em>Columnas</em> llena, la tabla se pivota en el cliente</td></tr>
+  <tr><td>Gráficos</td><td>Barras y líneas dibujados en <code>&lt;canvas&gt;</code> nativo</td></tr>
+  <tr><td>Drill-through</td><td>Clic en una celda de medida → modal con las filas de hechos</td></tr>
+  <tr><td>Editor MDX</td><td>Escribir, <em>Validar</em> (<code>/mdx/parse</code>), <em>Ejecutar</em> (<code>/mdx/execute</code>) y <em>generar MDX desde el constructor</em></td></tr>
+  <tr><td>Guardar/abrir</td><td>Consultas guardadas en <code>localStorage</code></td></tr>
+  <tr><td>Formato, CSV, orden, paginación</td><td>Medidas formateadas; exportar CSV; ordenar al hacer clic en el encabezado; paginación (100/página) en la tabla plana</td></tr>
+  <tr><td>Login/registro y <em>salir</em></td><td>Overlay de autenticación; el encabezado muestra <code>usuario · rol</code></td></tr>
+</table>
+
+<!-- ========================================================= -->
+<h2 id="dialectos">11. Dialectos SQL</h2>
+<p>La generación de SQL la dirige un <code>Dialect</code> (sección <a href="#m-sql">5.5</a>). Cinco dialectos están implementados y cubiertos por <em>golden tests</em>. <strong>El runtime ejecuta vía pgx (PostgreSQL)</strong>; apuntar a los demás requiere conectar el driver respectivo y cargar los datos en esa base (paso de despliegue) — la capa de <em>generación</em> de SQL ya está lista.</p>
+<table>
+  <tr><th>Dialecto</th><th>Quoting</th><th>Placeholder</th><th>Texto / Float</th><th>Límite</th></tr>
+  <tr><td>PostgreSQL</td><td><code>"x"</code></td><td><code>$1</code></td><td><code>(e)::text</code> / <code>(e)::float8</code></td><td><code>LIMIT n</code></td></tr>
+  <tr><td>MySQL/MariaDB</td><td><code>`x`</code></td><td><code>?</code></td><td><code>CAST(e AS CHAR/DOUBLE)</code></td><td><code>LIMIT n</code></td></tr>
+  <tr><td>DuckDB</td><td><code>"x"</code></td><td><code>?</code></td><td><code>CAST(e AS VARCHAR/DOUBLE)</code></td><td><code>LIMIT n</code></td></tr>
+  <tr><td>SQL Server</td><td><code>[x]</code></td><td><code>@p1</code></td><td><code>CAST(e AS NVARCHAR/FLOAT)</code></td><td><code>SELECT TOP n</code></td></tr>
+  <tr><td>Oracle</td><td><code>"x"</code></td><td><code>:1</code></td><td><code>CAST(e AS VARCHAR2/BINARY_DOUBLE)</code></td><td><code>FETCH FIRST n ROWS ONLY</code></td></tr>
+</table>
+<p>Resuelve por nombre con <code>sql.DialectByName("mysql"|"duckdb"|"sqlserver"|"oracle"|"postgres")</code>. Oracle, por ejemplo, omite el <code>AS</code> antes del alias de tabla (<code>FROM "t" "f"</code>).</p>
+
+<!-- ========================================================= -->
+<h2 id="ejemplos">12. Ejemplos de extremo a extremo</h2>
+
+<h4>12.1 Desglose por dimensión</h4>
 <pre><code>POST /saiku/api/query
 {"cube":"Sales","rows":[{"dimension":"Customers","level":"Country"}],
  "measures":["Unit Sales","Store Sales","Sales Count","Customer Count"]}
+→ USA | 266,773 | 565,238.13 | 86,837 | 5,581</code></pre>
 
-→ USA | 266773 | 565238.13 | 86837 | 5581</code></pre>
-
-<h4>9.2 Grid 2-D vía MDX</h4>
-<pre><code>POST /saiku/api/mdx/execute
-{"mdx":"SELECT {[Measures].[Unit Sales]} ON COLUMNS,
+<h4>12.2 Grilla 2-D vía MDX (CrossJoin)</h4>
+<pre><code>{"mdx":"SELECT {[Measures].[Unit Sales]} ON COLUMNS,
          CrossJoin([Gender].[Gender].Members,[Marital Status].[Marital Status].Members) ON ROWS
          FROM [Sales]"}
+→ F/M:65336  F/S:66222  M/M:66460  M/S:68755   (suma 266773)</code></pre>
 
-→ F / M : 65336      F / S : 66222
-  M / M : 66460      M / S : 68755     (suma = 266773)</code></pre>
-
-<h4>9.3 Top-N + ordenamiento componibles</h4>
-<pre><code>{"mdx":"SELECT {[Measures].[Unit Sales]} ON COLUMNS,
-         Head(Order([Store].[Store State].Members,[Measures].[Unit Sales],BDESC),2) ON ROWS
-         FROM [Sales]"}
-
-→ WA : 124366      CA : 74748</code></pre>
-
-<h4>9.4 Porcentaje del total (miembro calculado + Sum de conjunto)</h4>
+<h4>12.3 Porcentaje del total (miembro calculado + Sum)</h4>
 <pre><code>{"mdx":"WITH MEMBER [Measures].[Pct] AS
            [Measures].[Unit Sales] / Sum([Store].[Store State].Members,[Measures].[Unit Sales]) * 100
          SELECT {[Measures].[Unit Sales],[Measures].[Pct]} ON COLUMNS,
                 [Store].[Store State].Members ON ROWS FROM [Sales]"}
+→ CA:74748|28.02   OR:67659|25.36   WA:124366|46.62   (Σ ≈ 100%)</code></pre>
 
-→ CA : 74748 | 28.02      OR : 67659 | 25.36      WA : 124366 | 46.62   (Σ ≈ 100%)</code></pre>
+<h4>12.4 Jerarquía nombrada (Weekly)</h4>
+<pre><code>{"mdx":"SELECT {[Measures].[Unit Sales]} ON COLUMNS,
+         [Time].[Weekly].[Week].Members ON ROWS
+         FROM [Sales] WHERE [Time].[1997]"}
+→ 52 semanas (1..52)   — vs [Time].[Quarter].Members → 4 trimestres</code></pre>
 
-<h4>9.5 Mostrar todos los miembros vs NON EMPTY</h4>
-<pre><code>… [Store].[Store State].Members ON ROWS …            → 10 filas (BC, DF, Jalisco… vacías)
+<h4>12.5 Mostrar todos los miembros vs NON EMPTY</h4>
+<pre><code>… [Store].[Store State].Members ON ROWS …            → 10 filas (vacías incluidas)
 … NON EMPTY [Store].[Store State].Members ON ROWS …  → 3 filas (CA, OR, WA)</code></pre>
 
-<h2 id="esquemas">10. Formatos de esquema</h2>
+<!-- ========================================================= -->
+<h2 id="schemas">13. Formatos de esquema</h2>
 
-<h4>10.1 Mondrian XML (v3)</h4>
+<h4>13.1 Mondrian XML (v3)</h4>
 <pre><code>&lt;Schema name="FoodMart"&gt;
   &lt;Dimension name="Store"&gt;
     &lt;Hierarchy hasAll="true" primaryKey="store_id"&gt;
@@ -447,11 +453,11 @@ FROM [Cubo]
   &lt;Cube name="Sales" defaultMeasure="Unit Sales"&gt;
     &lt;Table name="sales_fact_1997"/&gt;
     &lt;DimensionUsage name="Store" source="Store" foreignKey="store_id"/&gt;
-    &lt;Measure name="Unit Sales" column="unit_sales" aggregator="sum"/&gt;
+    &lt;Measure name="Unit Sales" column="unit_sales" aggregator="sum" formatString="Standard"/&gt;
   &lt;/Cube&gt;
 &lt;/Schema&gt;</code></pre>
 
-<h4>10.2 YAML de autoría</h4>
+<h4>13.2 YAML de autoría</h4>
 <pre><code>schema: FoodMart
 cubes:
   - name: Sales
@@ -469,17 +475,16 @@ cubes:
         levels:
           - {name: Year, column: the_year, type: Numeric, levelType: TimeYears}
           - {name: Quarter, column: quarter, levelType: TimeQuarters}</code></pre>
-<p>Cargue cualquiera vía <code>CUBODW_SCHEMA=/ruta/archivo.xml</code> (o <code>.yml</code>).</p>
+<p>Carga cualquiera vía <code>CUBODW_SCHEMA=/ruta/archivo.xml</code> (o <code>.yml</code>).</p>
 
-<h2 id="limitaciones">11. Limitaciones (aún no soportado)</h2>
-<p>El motor es funcional y cubre la mayoría de las consultas de BI, pero <strong>no</strong> tiene paridad total con Mondrian. Las construcciones no soportadas devuelven un <em>error claro</em>:</p>
+<!-- ========================================================= -->
+<h2 id="limitaciones">14. Limitaciones (aún no soportado)</h2>
+<p>El motor es funcional y cubre la mayoría de las consultas de BI, pero <strong>no</strong> alcanza la paridad total con Mondrian. Las construcciones no soportadas devuelven un <em>error claro</em>:</p>
 <ul>
-  <li><code>Min</code>/<code>Max</code> sobre conjuntos en miembros calculados.</li>
-  <li>Mostrar todos los miembros en <code>CrossJoin</code> (multi-binding aún enumera vía hechos).</li>
-  <li><em>Named sets</em> (<code>WITH SET</code>), rangos (<code>m1 : m2</code>), funciones de tiempo (YTD, ParallelPeriod, Lag/Lead).</li>
+  <li>Mostrar todos los miembros en un <code>CrossJoin</code> (multi-binding aún enumera vía hechos).</li>
   <li>Dimensiones en <em>snowflake</em> (definidas por <code>&lt;Join&gt;</code>, p. ej. Product → product_class).</li>
-  <li>Múltiples jerarquías por dimensión, miembros padre-hijo.</li>
-  <li>Dialectos distintos de PostgreSQL.</li>
+  <li>Parent-child solo como <em>lista plana</em> (por nombre): navegación de árbol y rollup recursivo aún no.</li>
+  <li>Ejecución en runtime fuera de PostgreSQL: los dialectos MySQL/DuckDB/SQL Server/Oracle existen en la <em>generación</em> de SQL, pero el runtime usa pgx (conectar otro driver + datos es un paso de despliegue).</li>
 </ul>
 
 <footer>

@@ -59,6 +59,7 @@ pre {
 }
 pre code { color: #cfe3ff; white-space: pre; }
 p code, li code, td code { background: var(--bg-code); border: 1px solid var(--border); padding: 1px 6px; border-radius: 5px; font-size: .85em; color: #e6c9ff; }
+.muted { color: var(--muted); }
 .tag { display: inline-block; font-size: .7rem; font-weight: 700; padding: 2px 7px; border-radius: 20px; vertical-align: middle; }
 .get { background: #14361f; color: var(--accent-2); border: 1px solid #2c6b3f; }
 .post { background: #2a2140; color: #c8a8ff; border: 1px solid #4a3a72; }
