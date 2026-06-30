@@ -2,7 +2,6 @@ package sql
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"cubodw/internal/engine/metadata"
@@ -43,17 +42,18 @@ func BuildDrillthrough(d Dialect, cube *metadata.Cube, filters []query.Filter, m
 			selectExprs = append(selectExprs, expr)
 			st.Columns = append(st.Columns, query.Column{Name: lvl.Name, UniqueName: lvl.UniqueName(dim, hier), Kind: "level"})
 		}
-		st.Args = append(st.Args, f.Members)
-		where = append(where, fmt.Sprintf("(%s)::text = ANY($%d)", expr, len(st.Args)))
+		clause, args := d.InClause(expr, f.Members, len(st.Args))
+		where = append(where, clause)
+		st.Args = append(st.Args, args...)
 	}
 
 	// Colunas de medida cruas (valores da própria linha de fato). Cast para
-	// float8 para serializar como número JSON simples (colunas DECIMAL/Numeric).
+	// ponto flutuante para serializar como número JSON simples (colunas DECIMAL).
 	for _, m := range cube.Measures {
 		if m.Column == "" {
 			continue // medidas só com expressão são puladas no drill-through
 		}
-		selectExprs = append(selectExprs, d.QuoteIdent(factAlias)+"."+d.QuoteIdent(m.Column)+"::float8")
+		selectExprs = append(selectExprs, d.CastFloat(d.QuoteIdent(factAlias)+"."+d.QuoteIdent(m.Column)))
 		st.Columns = append(st.Columns, query.Column{Name: m.Name, UniqueName: m.UniqueName(), Kind: "measure", FormatString: m.FormatString})
 	}
 	if len(selectExprs) == 0 {
@@ -62,6 +62,7 @@ func BuildDrillthrough(d Dialect, cube *metadata.Cube, filters []query.Filter, m
 
 	var b strings.Builder
 	b.WriteString("SELECT ")
+	b.WriteString(d.SelectTop(maxrows)) // "TOP n " no SQL Server; "" nos demais
 	b.WriteString(strings.Join(selectExprs, ", "))
 	b.WriteString("\nFROM ")
 	b.WriteString(relationSQL(d, cube.Fact))
@@ -75,8 +76,10 @@ func BuildDrillthrough(d Dialect, cube *metadata.Cube, filters []query.Filter, m
 		b.WriteString("\nWHERE ")
 		b.WriteString(strings.Join(where, " AND "))
 	}
-	b.WriteString("\nLIMIT ")
-	b.WriteString(strconv.Itoa(maxrows))
+	if suffix := d.LimitSuffix(maxrows); suffix != "" {
+		b.WriteString("\n")
+		b.WriteString(suffix)
+	}
 
 	st.SQL = b.String()
 	return st, nil

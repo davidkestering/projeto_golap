@@ -83,8 +83,9 @@ func Build(d Dialect, cube *metadata.Cube, q query.Query) (*Statement, error) {
 		if err != nil {
 			return nil, err
 		}
-		st.Args = append(st.Args, f.Members)
-		where = append(where, fmt.Sprintf("(%s)::text = ANY($%d)", expr, len(st.Args)))
+		clause, args := d.InClause(expr, f.Members, len(st.Args))
+		where = append(where, clause)
+		st.Args = append(st.Args, args...)
 	}
 
 	// Montagem da SQL.
@@ -165,13 +166,13 @@ func measureExpr(d Dialect, m *metadata.Measure) (string, error) {
 	case "count":
 		return "count(" + src + ")", nil
 	case "min":
-		return "min(" + src + ")::float8", nil
+		return d.CastFloat("min(" + src + ")"), nil
 	case "max":
-		return "max(" + src + ")::float8", nil
+		return d.CastFloat("max(" + src + ")"), nil
 	case "avg":
-		return "avg(" + src + ")::float8", nil
+		return d.CastFloat("avg(" + src + ")"), nil
 	default: // sum
-		return "sum(" + src + ")::float8", nil
+		return d.CastFloat("sum(" + src + ")"), nil
 	}
 }
 

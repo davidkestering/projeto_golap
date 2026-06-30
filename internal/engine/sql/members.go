@@ -43,9 +43,9 @@ func BuildLevelMembers(d Dialect, cube *metadata.Cube, ref query.LevelRef, filte
 		if fh.Table.Table != hier.Table.Table {
 			continue
 		}
-		st.Args = append(st.Args, f.Members)
-		where = append(where, fmt.Sprintf("(%s)::text = ANY($%d)",
-			d.QuoteIdent(alias)+"."+d.QuoteIdent(fl.Column), len(st.Args)))
+		clause, args := d.InClause(d.QuoteIdent(alias)+"."+d.QuoteIdent(fl.Column), f.Members, len(st.Args))
+		where = append(where, clause)
+		st.Args = append(st.Args, args...)
 	}
 
 	var b strings.Builder

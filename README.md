@@ -130,9 +130,16 @@ Também suportados: **named sets** (`WITH SET`), **ranges** (`m1 : m2`),
 **múltiplas hierarquias** por dimensão (ex.: `[Time].[Weekly].[Week]`) e
 **parent-child** plano (ex.: `[Employees].[Employee Id].Members` exibido por nome).
 
+**Múltiplos dialetos SQL** (`internal/engine/sql/dialect.go`): a geração de SQL é
+dirigida por um `Dialect` (quoting, placeholders, casts, `IN`, `LIMIT`/`TOP`).
+Implementados e testados (golden) **PostgreSQL, MySQL/MariaDB, DuckDB e SQL Server**.
+> Observação: o runtime executa via **pgx (PostgreSQL)**. Apontar para MySQL/DuckDB/
+> SQL Server requer plugar o driver respectivo + carregar o FoodMart nesse banco
+> (passo de deploy); a camada de geração de SQL já está pronta para eles.
+
 Ainda **não** suportados (erro claro): mostrar todos os membros em `CrossJoin`
 (multi-binding via fato), snowflake, navegação de árvore/rollup recursivo em
-parent-child. Em desenvolvimento: mais dialetos SQL (MySQL/DuckDB/SQL Server).
+parent-child.
 
 **Fase 9.1 (AI Query API):** surface tipada para agentes/LLMs consultarem cubos
 **sem MDX** (`internal/web/ai.go`):
