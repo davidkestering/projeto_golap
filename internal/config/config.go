@@ -2,7 +2,10 @@
 // ambiente (estilo 12-factor, adequado a containers).
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 // Config reúne os parâmetros de execução do motor.
 type Config struct {
@@ -16,6 +19,8 @@ type Config struct {
 	SchemaPath string
 	// ConnectionName é o nome lógico da conexão exposto na descoberta.
 	ConnectionName string
+	// CacheSize é o nº máximo de resultados em cache (0 desabilita).
+	CacheSize int
 }
 
 // FromEnv monta a Config a partir do ambiente, aplicando defaults sensatos.
@@ -28,7 +33,17 @@ func FromEnv() Config {
 		PostgresDSN:    firstNonEmpty(os.Getenv("CUBODW_PG_DSN"), os.Getenv("PG_DSN")),
 		SchemaPath:     os.Getenv("CUBODW_SCHEMA"),
 		ConnectionName: getenv("CUBODW_CONNECTION", "foodmart"),
+		CacheSize:      getenvInt("CUBODW_CACHE_SIZE", 256),
 	}
+}
+
+func getenvInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
 }
 
 func getenv(key, def string) string {

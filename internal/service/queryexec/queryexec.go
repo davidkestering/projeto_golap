@@ -17,11 +17,31 @@ import (
 type Service struct {
 	pool    *pgxpool.Pool
 	dialect enginesql.Dialect
+	cache   *resultCache
 }
 
 // New cria o serviço. pool pode ser nil (apenas planejamento/preview funciona).
-func New(pool *pgxpool.Pool) *Service {
-	return &Service{pool: pool, dialect: enginesql.Postgres{}}
+// cacheSize > 0 habilita o cache de resultados (FIFO, em memória).
+func New(pool *pgxpool.Pool, cacheSize int) *Service {
+	return &Service{pool: pool, dialect: enginesql.Postgres{}, cache: newResultCache(cacheSize)}
+}
+
+// CacheStats devolve hits, misses e tamanho do cache de resultados.
+func (s *Service) CacheStats() (hits, misses, size int64) {
+	if s.cache == nil {
+		return 0, 0, 0
+	}
+	return s.cache.stats()
+}
+
+// CacheEnabled indica se o cache está ativo.
+func (s *Service) CacheEnabled() bool { return s.cache != nil }
+
+// CacheClear esvazia o cache de resultados.
+func (s *Service) CacheClear() {
+	if s.cache != nil {
+		s.cache.clear()
+	}
 }
 
 // Plan gera a SQL para a query (validação de nomes inclusa). Não toca no banco.
@@ -71,6 +91,14 @@ func (s *Service) Run(ctx context.Context, cube *metadata.Cube, st *enginesql.St
 	if s.pool == nil {
 		return nil, fmt.Errorf("sem conexão de banco")
 	}
+
+	key := st.SQL + "|" + fmt.Sprintf("%v", st.Args)
+	if s.cache != nil {
+		if cached, ok := s.cache.get(key); ok {
+			return cloneResult(cached), nil
+		}
+	}
+
 	rows, err := s.pool.Query(ctx, st.SQL, st.Args...)
 	if err != nil {
 		return nil, err
@@ -94,6 +122,9 @@ func (s *Service) Run(ctx context.Context, cube *metadata.Cube, st *enginesql.St
 	}
 	if res.Rows == nil {
 		res.Rows = [][]query.Cell{}
+	}
+	if s.cache != nil {
+		s.cache.put(key, cloneResult(res))
 	}
 	return res, nil
 }

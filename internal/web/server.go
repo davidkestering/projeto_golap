@@ -28,13 +28,14 @@ import (
 	"cubodw/internal/version"
 )
 
-// Server encapsula o HTTP server, o pool de conexões e o serviço de descoberta.
+// Server encapsula o HTTP server, o pool de conexões e os serviços.
 type Server struct {
 	cfg      config.Config
 	pool     *pgxpool.Pool
 	http     *http.Server
 	log      *slog.Logger
 	discover *discover.Service
+	exec     *queryexec.Service
 }
 
 // NewServer constrói o servidor: carrega o schema (config ou demo embutido),
@@ -65,11 +66,15 @@ func NewServer(cfg config.Config) (*Server, error) {
 		discover: discover.New(cfg.ConnectionName, schema),
 	}
 
+	exec := queryexec.New(pool, cfg.CacheSize)
+	s.exec = exec
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /ready", s.handleReady)
 	mux.HandleFunc("GET /saiku/api/info", s.handleInfo)
-	exec := queryexec.New(pool)
+	mux.HandleFunc("GET /saiku/api/cache", s.handleCacheStats)
+	mux.HandleFunc("POST /saiku/api/cache/clear", s.handleCacheClear)
 	(&discoverAPI{svc: s.discover}).register(mux)
 	(&queryAPI{discover: s.discover, exec: exec}).register(mux)
 	(&mdxAPI{discover: s.discover, exec: exec}).register(mux)
@@ -137,6 +142,7 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 
 // handleInfo devolve metadados básicos do serviço.
 func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
+	hits, misses, size := s.exec.CacheStats()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":       "cubodw-engine",
 		"version":    version.Version,
@@ -144,7 +150,28 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 		"connection": s.discover.Connection(),
 		"schema":     s.discover.SchemaName(),
 		"cubes":      len(s.discover.Cubes()),
+		"cache":      map[string]any{"enabled": s.exec.CacheEnabled(), "hits": hits, "misses": misses, "size": size},
 	})
+}
+
+// handleCacheStats devolve as métricas do cache de resultados.
+func (s *Server) handleCacheStats(w http.ResponseWriter, _ *http.Request) {
+	hits, misses, size := s.exec.CacheStats()
+	total := hits + misses
+	var ratio float64
+	if total > 0 {
+		ratio = float64(hits) / float64(total)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"enabled": s.exec.CacheEnabled(), "hits": hits, "misses": misses,
+		"size": size, "hitRatio": ratio,
+	})
+}
+
+// handleCacheClear esvazia o cache de resultados.
+func (s *Server) handleCacheClear(w http.ResponseWriter, _ *http.Request) {
+	s.exec.CacheClear()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
 }
 
 // loadSchema carrega o schema do caminho indicado (.yml/.yaml = YAML; demais =

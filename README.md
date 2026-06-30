@@ -149,6 +149,12 @@ Validação com auto-correção: nome inválido devolve `{status, field, value, 
 - `YTD([Time].[1997].[Q3])` — do início do ciclo até o membro (acumulado no ano).
   Ex.: `Lead(1)` de Q3 → Q4; `YTD(Q3)` → Q1, Q2, Q3.
 
+**Fase 9.4 (cache de resultados):** cache em memória (FIFO) no nível do `queryexec.Run`,
+indexado por SQL+args — beneficia query JSON, MDX e drill-through. Ligado por
+`CUBODW_CACHE_SIZE` (default 256; 0 desabilita).
+- `GET /saiku/api/cache` — métricas `{enabled, hits, misses, size, hitRatio}`.
+- `POST /saiku/api/cache/clear` — esvazia. Stats também em `/saiku/api/info`.
+
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.
 
