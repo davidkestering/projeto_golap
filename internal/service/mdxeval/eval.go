@@ -359,6 +359,13 @@ func resolveMemberSet(ctx context.Context, cube *metadata.Cube, exp mdx.Exp, sli
 				return ytd(ctx, cube, exec, base)
 			}
 		}
+		if e.Syntax == mdx.SyntaxInfix && e.Name == ":" && len(e.Args) == 2 {
+			a, ok1 := e.Args[0].(*mdx.Id)
+			b, ok2 := e.Args[1].(*mdx.Id)
+			if ok1 && ok2 {
+				return rangeSet(ctx, cube, exec, a, b)
+			}
+		}
 	}
 
 	if fc, ok := exp.(*mdx.FunCall); ok && fc.Syntax == mdx.SyntaxFunction {

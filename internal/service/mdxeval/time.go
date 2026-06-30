@@ -67,6 +67,40 @@ func timeShift(ctx context.Context, cube *metadata.Cube, exec *queryexec.Service
 	return []levelBinding{binding}, []position{{values: []string{members[target]}}}, nil
 }
 
+// rangeSet trata o operador MDX 'm1 : m2': o conjunto dos membros entre m1 e m2
+// (inclusive) na ordem do nível, dentro do mesmo contexto de ancestrais.
+func rangeSet(ctx context.Context, cube *metadata.Cube, exec *queryexec.Service, m1, m2 *mdx.Id) ([]levelBinding, []position, error) {
+	levelRef, ancestors, members, idx1, err := memberContext(ctx, cube, exec, m1)
+	if err != nil {
+		return nil, nil, err
+	}
+	ref2, err := resolveMemberId(cube, m2)
+	if err != nil {
+		return nil, nil, err
+	}
+	v2 := ref2.values[ref2.levelIndex]
+	idx2 := -1
+	for i, m := range members {
+		if m == v2 {
+			idx2 = i
+			break
+		}
+	}
+	if idx2 < 0 {
+		return nil, nil, fmt.Errorf("range: membro final %q não está no mesmo nível/contexto", v2)
+	}
+	lo, hi := idx1, idx2
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	binding := levelBinding{ref: levelRef, filters: ancestors}
+	pos := make([]position, 0, hi-lo+1)
+	for i := lo; i <= hi; i++ {
+		pos = append(pos, position{values: []string{members[i]}})
+	}
+	return []levelBinding{binding}, pos, nil
+}
+
 // ytd devolve os membros do começo do ciclo (sob os ancestrais) até o membro,
 // inclusive — Year-To-Date quando o ancestral é o ano.
 func ytd(ctx context.Context, cube *metadata.Cube, exec *queryexec.Service, id *mdx.Id) ([]levelBinding, []position, error) {
