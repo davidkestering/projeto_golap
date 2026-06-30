@@ -437,6 +437,83 @@ async function openQuery(name) {
   setStatus("consulta aberta: " + name);
 }
 
+// ---- modo MDX --------------------------------------------------------------
+function setMode(mode) {
+  const builder = mode === "builder";
+  $("#zones-panel").hidden = !builder;
+  $("#mdx-panel").hidden = builder;
+  $("#run").hidden = !builder;
+  document.querySelectorAll(".modes .seg").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+}
+
+function crossjoin(sets) {
+  return sets.length === 1 ? sets[0] : `CrossJoin(${sets[0]}, ${crossjoin(sets.slice(1))})`;
+}
+
+// Gera um MDX a partir do estado do construtor (medidas em COLUMNS, níveis em ROWS).
+function mdxFromBuilder() {
+  if (!state.cube) return "";
+  const measures = state.zones.measures.map((m) => `[Measures].[${m.name}]`);
+  const rowSets = state.zones.rows.concat(state.zones.cols).map((r) => `[${r.dimension}].[${r.level}].Members`);
+  let mdx = "SELECT";
+  const parts = [];
+  if (measures.length) parts.push(`  {${measures.join(", ")}} ON COLUMNS`);
+  if (rowSets.length) parts.push(`  ${crossjoin(rowSets)} ON ROWS`);
+  mdx += "\n" + parts.join(",\n") + `\nFROM [${state.cube}]`;
+  const slicers = state.zones.filters
+    .filter((f) => f.members && f.members.length)
+    .map((f) => `[${f.dimension}].[${f.level}].[${f.members[0]}]`);
+  if (slicers.length) mdx += `\nWHERE (${slicers.join(", ")})`;
+  return mdx;
+}
+
+async function mdxValidate() {
+  const mdx = $("#mdx-text").value.trim();
+  if (!mdx) return;
+  const { ok, body } = await api("/saiku/api/mdx/parse", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mdx }),
+  });
+  if (!ok) { setStatus((body.status || "erro") + ": " + (body.error || ""), true); return; }
+  const axes = (body.axes || []).map((a) => a.name).join(", ");
+  setStatus(`✓ válido · cubo ${body.cube}${body.cubeKnown ? "" : " (desconhecido!)"} · eixos: ${axes || "—"}`);
+}
+
+async function mdxExecute() {
+  const mdx = $("#mdx-text").value.trim();
+  if (!mdx) return;
+  setStatus("executando MDX…");
+  const { ok, body } = await api("/saiku/api/mdx/execute", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mdx }),
+  });
+  if (!ok) { setStatus((body.status ? body.status + ": " : "") + (body.error || "erro"), true); return; }
+  state.view = "table";
+  document.querySelectorAll(".seg[data-view]").forEach((b) => b.classList.toggle("active", b.dataset.view === "table"));
+  $("#chart").hidden = true; $("#grid").hidden = false;
+  $("#sql").textContent = body.sql || "";
+  setStatus(`${(body.cells || []).length} célula(s)`);
+  renderCellSet(body);
+}
+
+// Renderiza o CellSet do /mdx/execute (usa o grid de 2 eixos quando disponível).
+function renderCellSet(cs) {
+  const g = cs.grid;
+  if (!g) {
+    const n = (cs.axes || []).length;
+    $("#grid").innerHTML = `<div class="empty">resultado com ${n} eixo(s) — use COLUMNS e ROWS para a grade</div>`;
+    return;
+  }
+  let html = "<table><thead><tr><th></th>";
+  g.columnHeaders.forEach((h) => (html += `<th class="measure">${esc(h)}</th>`));
+  html += "</tr></thead><tbody>";
+  (g.rowHeaders || []).forEach((rh, ri) => {
+    html += `<tr><td>${esc(rh)}</td>`;
+    (g.rows[ri] || []).forEach((v) => (html += `<td class="measure">${esc(v)}</td>`));
+    html += "</tr>";
+  });
+  html += "</tbody></table>";
+  $("#grid").innerHTML = html;
+}
+
 // ---- boot ------------------------------------------------------------------
 setupZones();
 $("#cube").addEventListener("change", (e) => loadSchema(e.target.value));
@@ -465,5 +542,9 @@ $("#save").addEventListener("click", saveQuery);
 $("#open").addEventListener("change", (e) => { if (e.target.value) openQuery(e.target.value); });
 $("#modal-close").addEventListener("click", closeModal);
 $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
+document.querySelectorAll(".modes .seg").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
+$("#mdx-run").addEventListener("click", mdxExecute);
+$("#mdx-validate").addEventListener("click", mdxValidate);
+$("#mdx-from-builder").addEventListener("click", () => { $("#mdx-text").value = mdxFromBuilder(); setStatus("MDX gerado do construtor"); });
 refreshOpenSelect();
 loadCubes();

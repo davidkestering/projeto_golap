@@ -157,10 +157,16 @@ indexado por SQL+args — beneficia query JSON, MDX e drill-through. Ligado por
 - `GET /saiku/api/cache` — métricas `{enabled, hits, misses, size, hitRatio}`.
 - `POST /saiku/api/cache/clear` — esvazia. Stats também em `/saiku/api/info`.
 
-**Trilha B — UI Fase 1 (aplicação visual):** SPA leve embutida no binário
-(`go:embed`, sem toolchain Node) servida em **`/ui/`** (`internal/web/ui/`):
-seletor de cubo → **arrastar** dimensões/níveis para Linhas, medidas para Medidas,
-filtros (com membros) → Executar → tabela + SQL gerada. Consome a AI Query API.
+**Trilha B — aplicação visual (UI Fases 1–5):** SPA leve embutida no binário
+(`go:embed`, **sem toolchain Node**) servida em **`/ui/`** (`internal/web/ui/`):
+- **Construtor drag-and-drop:** seletor de cubo → arrastar dimensões/níveis para
+  Linhas/Colunas, medidas para Medidas, filtros (com membros) → Executar.
+- **Cross-tab** (pivot linhas × colunas × medidas, no cliente).
+- **Gráficos** de barras e linhas (canvas nativo, sem libs).
+- **Drill-through**: clique numa célula → linhas de fato cruas num modal.
+- **Salvar/abrir consultas** (localStorage).
+- **Editor MDX**: escrever, **Validar** (`/mdx/parse`) e **Executar**
+  (`/mdx/execute`), além de **gerar MDX a partir do construtor**.
 
 Schema carregado via `CUBODW_SCHEMA` (`.xml` Mondrian | `.yml`/`.yaml` autoria);
 vazio usa o FoodMart embutido.

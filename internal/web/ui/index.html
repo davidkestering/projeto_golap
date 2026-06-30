@@ -9,6 +9,10 @@
 <body>
 <header>
   <div class="brand">CuboDW <span>· analisador de cubos</span></div>
+  <div class="modes">
+    <button class="seg active" data-mode="builder">Construtor</button>
+    <button class="seg" data-mode="mdx">MDX</button>
+  </div>
   <label>Cubo:
     <select id="cube"></select>
   </label>
@@ -32,7 +36,7 @@
   </aside>
 
   <section class="builder">
-    <div class="zones">
+    <div class="zones" id="zones-panel">
       <div class="zone" id="zone-rows" data-accept="level">
         <h4>Linhas <small>(níveis)</small></h4>
         <ul class="dropchips"></ul>
@@ -48,6 +52,16 @@
       <div class="zone" id="zone-filters" data-accept="level">
         <h4>Filtros <small>(nível = membros)</small></h4>
         <ul class="dropchips"></ul>
+      </div>
+    </div>
+
+    <div class="mdx-panel" id="mdx-panel" hidden>
+      <textarea id="mdx-text" spellcheck="false"
+        placeholder="SELECT {[Measures].[Unit Sales]} ON COLUMNS,&#10;       [Store].[Store Country].Members ON ROWS&#10;FROM [Sales]"></textarea>
+      <div class="mdx-actions">
+        <button id="mdx-run" class="primary">▶ Executar MDX</button>
+        <button id="mdx-validate" class="ghost">Validar</button>
+        <button id="mdx-from-builder" class="ghost">⟲ Gerar do construtor</button>
       </div>
     </div>
 
