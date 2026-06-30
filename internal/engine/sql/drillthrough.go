@@ -66,7 +66,7 @@ func BuildDrillthrough(d Dialect, cube *metadata.Cube, filters []query.Filter, m
 	b.WriteString(strings.Join(selectExprs, ", "))
 	b.WriteString("\nFROM ")
 	b.WriteString(relationSQL(d, cube.Fact))
-	b.WriteString(" AS ")
+	b.WriteString(d.AliasSep())
 	b.WriteString(d.QuoteIdent(factAlias))
 	for _, j := range joins.ordered() {
 		b.WriteString("\n")

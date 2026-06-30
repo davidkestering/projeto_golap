@@ -131,8 +131,9 @@ Também suportados: **named sets** (`WITH SET`), **ranges** (`m1 : m2`),
 **parent-child** plano (ex.: `[Employees].[Employee Id].Members` exibido por nome).
 
 **Múltiplos dialetos SQL** (`internal/engine/sql/dialect.go`): a geração de SQL é
-dirigida por um `Dialect` (quoting, placeholders, casts, `IN`, `LIMIT`/`TOP`).
-Implementados e testados (golden) **PostgreSQL, MySQL/MariaDB, DuckDB e SQL Server**.
+dirigida por um `Dialect` (quoting, placeholders, casts, `IN`, `LIMIT`/`TOP`/`FETCH`,
+alias com/sem `AS`). Implementados e testados (golden): **PostgreSQL, MySQL/MariaDB,
+DuckDB, SQL Server e Oracle** (`DialectByName` resolve por nome).
 > Observação: o runtime executa via **pgx (PostgreSQL)**. Apontar para MySQL/DuckDB/
 > SQL Server requer plugar o driver respectivo + carregar o FoodMart nesse banco
 > (passo de deploy); a camada de geração de SQL já está pronta para eles.

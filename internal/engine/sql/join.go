@@ -54,8 +54,9 @@ func (js *joinSet) levelExpr(dim *metadata.Dimension, hier *metadata.Hierarchy, 
 	if !js.seen[alias] {
 		js.seen[alias] = true
 		js.order = append(js.order, fmt.Sprintf(
-			"JOIN %s AS %s ON %s.%s = %s.%s",
+			"JOIN %s%s%s ON %s.%s = %s.%s",
 			relationSQL(js.d, hier.Table),
+			js.d.AliasSep(),
 			js.d.QuoteIdent(alias),
 			js.d.QuoteIdent(factAlias), js.d.QuoteIdent(dim.ForeignKey),
 			js.d.QuoteIdent(alias), js.d.QuoteIdent(hier.PrimaryKey),

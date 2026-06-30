@@ -102,6 +102,48 @@ func TestSQLServerBuild(t *testing.T) {
 	}
 }
 
+func TestOracleBuild(t *testing.T) {
+	c := salesCube(t)
+	q := query.Query{
+		Cube:     "Sales",
+		Rows:     []query.LevelRef{{Dimension: "Time", Level: "Year"}},
+		Measures: []string{"Unit Sales"},
+		Filters:  []query.Filter{{Dimension: "Customers", Level: "Country", Members: []string{"USA"}}},
+	}
+	st, err := enginesql.Build(enginesql.Oracle{}, c, q)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	// Oracle: alias de tabela SEM AS, bind :1, VARCHAR2/BINARY_DOUBLE.
+	want := `SELECT "Time"."the_year", CAST(sum("f"."unit_sales") AS BINARY_DOUBLE)
+FROM "sales_fact_1997" "f"
+JOIN "time_by_day" "Time" ON "f"."time_id" = "Time"."time_id"
+JOIN "customer" "Customers" ON "f"."customer_id" = "Customers"."customer_id"
+WHERE CAST("Customers"."country" AS VARCHAR2(4000)) IN (:1)
+GROUP BY "Time"."the_year"
+ORDER BY 1`
+	if st.SQL != want {
+		t.Errorf("SQL Oracle inesperada:\n--- got ---\n%s\n--- want ---\n%s", st.SQL, want)
+	}
+}
+
+func TestOracleDrillthroughFetchFirst(t *testing.T) {
+	c := salesCube(t)
+	st, err := enginesql.BuildDrillthrough(enginesql.Oracle{}, c,
+		[]query.Filter{{Dimension: "Store", Level: "Store State", Members: []string{"CA"}}}, 5)
+	if err != nil {
+		t.Fatalf("BuildDrillthrough: %v", err)
+	}
+	if !contains(st.SQL, "FETCH FIRST 5 ROWS ONLY") {
+		t.Errorf("faltou FETCH FIRST: %s", st.SQL)
+	}
+	// Oracle não usa LIMIT/TOP, nem "AS" antes de alias de tabela (AS "..."); o
+	// "AS" dentro de CAST(... AS TIPO) é permitido.
+	if contains(st.SQL, "LIMIT") || contains(st.SQL, "TOP ") || contains(st.SQL, `AS "`) {
+		t.Errorf("Oracle não deve usar LIMIT/TOP/alias-AS: %s", st.SQL)
+	}
+}
+
 func TestDialectByName(t *testing.T) {
 	for name, want := range map[string]string{
 		"":          "postgres",
@@ -111,6 +153,8 @@ func TestDialectByName(t *testing.T) {
 		"duckdb":    "duckdb",
 		"sqlserver": "sqlserver",
 		"mssql":     "sqlserver",
+		"oracle":    "oracle",
+		"ora":       "oracle",
 	} {
 		d, err := enginesql.DialectByName(name)
 		if err != nil {
@@ -120,7 +164,7 @@ func TestDialectByName(t *testing.T) {
 			t.Errorf("DialectByName(%q) = %q, quero %q", name, d.Name(), want)
 		}
 	}
-	if _, err := enginesql.DialectByName("oracle"); err == nil {
+	if _, err := enginesql.DialectByName("db2"); err == nil {
 		t.Error("esperava erro para dialeto desconhecido")
 	}
 }

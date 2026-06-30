@@ -26,6 +26,9 @@ type Dialect interface {
 	SelectTop(n int) string
 	// LimitSuffix devolve a cláusula de limite no fim (ex.: "LIMIT n"), ou "".
 	LimitSuffix(n int) string
+	// AliasSep é o separador antes do alias de tabela (" AS " na maioria; " " no
+	// Oracle, que não aceita AS para alias de tabela).
+	AliasSep() string
 }
 
 // quoteWith quota um identificador com o par de delimitadores dado, escapando o
@@ -67,6 +70,7 @@ func (Postgres) CastText(expr string) string   { return "(" + expr + ")::text" }
 func (Postgres) CastFloat(expr string) string  { return expr + "::float8" }
 func (Postgres) SelectTop(int) string          { return "" }
 func (Postgres) LimitSuffix(n int) string      { return "LIMIT " + strconv.Itoa(n) }
+func (Postgres) AliasSep() string              { return " AS " }
 
 // InClause no Postgres usa um único parâmetro de array: col::text = ANY($n).
 func (p Postgres) InClause(colExpr string, members []string, startArg int) (string, []any) {
@@ -85,6 +89,7 @@ func (MySQL) CastText(expr string) string   { return "CAST(" + expr + " AS CHAR)
 func (MySQL) CastFloat(expr string) string  { return "CAST(" + expr + " AS DOUBLE)" }
 func (MySQL) SelectTop(int) string          { return "" }
 func (MySQL) LimitSuffix(n int) string      { return "LIMIT " + strconv.Itoa(n) }
+func (MySQL) AliasSep() string              { return " AS " }
 func (m MySQL) InClause(colExpr string, members []string, startArg int) (string, []any) {
 	return inWithPlaceholders(m, colExpr, members, startArg)
 }
@@ -102,6 +107,7 @@ func (DuckDB) CastText(expr string) string   { return "CAST(" + expr + " AS VARC
 func (DuckDB) CastFloat(expr string) string  { return "CAST(" + expr + " AS DOUBLE)" }
 func (DuckDB) SelectTop(int) string          { return "" }
 func (DuckDB) LimitSuffix(n int) string      { return "LIMIT " + strconv.Itoa(n) }
+func (DuckDB) AliasSep() string              { return " AS " }
 func (d DuckDB) InClause(colExpr string, members []string, startArg int) (string, []any) {
 	return inWithPlaceholders(d, colExpr, members, startArg)
 }
@@ -119,8 +125,27 @@ func (SQLServer) CastText(expr string) string   { return "CAST(" + expr + " AS N
 func (SQLServer) CastFloat(expr string) string  { return "CAST(" + expr + " AS FLOAT)" }
 func (SQLServer) SelectTop(n int) string        { return "TOP " + strconv.Itoa(n) + " " }
 func (SQLServer) LimitSuffix(int) string        { return "" }
+func (SQLServer) AliasSep() string              { return " AS " }
 func (s SQLServer) InClause(colExpr string, members []string, startArg int) (string, []any) {
 	return inWithPlaceholders(s, colExpr, members, startArg)
+}
+
+// ---- Oracle ---------------------------------------------------------------
+
+// Oracle implementa o dialeto Oracle (aspas duplas, bind vars :n, CAST para
+// VARCHAR2/BINARY_DOUBLE, FETCH FIRST n ROWS ONLY, e alias de tabela SEM "AS").
+type Oracle struct{}
+
+func (Oracle) Name() string                  { return "oracle" }
+func (Oracle) QuoteIdent(name string) string { return quoteWith(name, `"`, `"`) }
+func (Oracle) Placeholder(i int) string      { return ":" + strconv.Itoa(i) }
+func (Oracle) CastText(expr string) string   { return "CAST(" + expr + " AS VARCHAR2(4000))" }
+func (Oracle) CastFloat(expr string) string  { return "CAST(" + expr + " AS BINARY_DOUBLE)" }
+func (Oracle) SelectTop(int) string          { return "" }
+func (Oracle) LimitSuffix(n int) string      { return "FETCH FIRST " + strconv.Itoa(n) + " ROWS ONLY" }
+func (Oracle) AliasSep() string              { return " " } // Oracle não aceita AS para alias de tabela
+func (o Oracle) InClause(colExpr string, members []string, startArg int) (string, []any) {
+	return inWithPlaceholders(o, colExpr, members, startArg)
 }
 
 // DialectByName devolve um dialeto pelo nome (default: Postgres).
@@ -134,6 +159,8 @@ func DialectByName(name string) (Dialect, error) {
 		return DuckDB{}, nil
 	case "sqlserver", "mssql", "tsql":
 		return SQLServer{}, nil
+	case "oracle", "ora":
+		return Oracle{}, nil
 	default:
 		return nil, fmt.Errorf("dialeto desconhecido: %q", name)
 	}
